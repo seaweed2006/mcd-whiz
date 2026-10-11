@@ -4,6 +4,11 @@
 .env.*
 !*.env.example
 
+# 含个人隐私的真实数据快照（我的积分账户 / 卡包券）
+# 公开段 real_snapshot_public.json 是要随仓库发布的，不要忽略
+fixtures/real_snapshot_private.json
+fixtures/real_snapshot.json
+
 # Python 缓存
 __pycache__/
 *.pyc
