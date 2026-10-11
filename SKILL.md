@@ -19,8 +19,8 @@ description: 麦麦精算师——基于麦当劳官方 MCP（M-China/mcd-mcp-se
 | 活动 | "最近有什么活动别错过" | 活动日历分「进行中/即将开始」并给参与路径 | campaign-calendar, query-party-city/store/date/session, party-order-create |
 | 盲盒 | "30 块、不要香菜，随便来" | 随机生成套餐 + 一句麦门文案 | query-meals, calculate-price |
 | 亲子/闺蜜 | "带娃/和闺蜜 2 人、60 块怎么点" | 按人数与场景拼"每人主食+饮料 + 共享小食"分享篮，亲子避辛辣、闺蜜偏拍照甜品 | query-meals, calculate-price, query-store-coupons |
-| 银发适老 | "带牙口不好的老人怎么点软糯的" | 筛选天然软质单品（鳕鱼堡/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；可加年轻人常规主食 | query-meals, list-nutrition-foods, calculate-price |
-| 好兄弟 | "2 个男生练后补蛋白、80 块" | 每人高蛋白堡 + 共享鸡翅鸡块，报告合计蛋白/人均蛋白 | query-meals, calculate-price, query-store-coupons |
+| 银发适老 | "带牙口不好的老人怎么点软糯的" | 筛选天然软质单品（鳕鱼堡/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；`--low-sodium` 优先低钠并报告本餐钠摄入；可加年轻人常规主食 | query-meals, list-nutrition-foods, calculate-price |
+| 好兄弟 | "2 个男生练后补蛋白、80 块" | 每人高蛋白堡 + 共享鸡翅鸡块；`--protein` 定人均蛋白目标，预算内尽量凑够并报告达标/缺口 | query-meals, calculate-price, query-store-coupons |
 
 ## 工作流程（Agent 必读）
 
@@ -51,7 +51,9 @@ python mcd_whiz.py --mode share --scenario family --people 2 --budget 60   # 亲
 python mcd_whiz.py --mode share --scenario friends --people 2 --budget 60 # 闺蜜共享篮
 python mcd_whiz.py --mode elderly --budget 40                # 银发适老·软糯（老人单独）
 python mcd_whiz.py --mode elderly --budget 60 --companion    # 年轻人带老人同行（加一份常规主食）
+python mcd_whiz.py --mode elderly --budget 40 --low-sodium   # 银发·低钠优先（报告本餐钠摄入，控钠人群）
 python mcd_whiz.py --mode bros --people 2 --budget 80        # 好兄弟蛋白质局（2 男）
+python mcd_whiz.py --mode bros --people 2 --budget 80 --protein 40  # 好兄弟·人均蛋白目标40g（达标优先）
 ```
 
 接入真实麦当劳 MCP（含会员/积分真实数据）见 `MCP_INTEGRATION.md`；参赛信息见 `CONTEST.md`。
