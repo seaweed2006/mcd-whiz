@@ -17,7 +17,7 @@
 
 **一个 Skill 编排 35 个官方 MCP 工具 → 9 种决策模式**（覆盖官方三大方向：套餐定制 / 省钱 / 活动推荐）。已接真实数据、全程只读、支付由用户完成。
 
-⭐ **如果这个项目对你有用，欢迎点个 Star**——本作品参赛 2026 麦当劳程序员创意开发大赛（M-CODE，2026.10.09–10.25）。📄 参赛声明见 [`CONTEST_DECLARATION.md`](CONTEST_DECLARATION.md) ｜ 完整开发过程见 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)。基于腾讯 WorkBuddy 协作开发。
+⭐ **如果这个项目对你有用，欢迎点个 Star**——本作品参赛 2026 麦当劳程序员创意开发大赛（M-CODE，2026.10.09–10.25）。📄 参赛声明见 [`CONTEST_DECLARATION.md`](CONTEST_DECLARATION.md) ｜ 完整开发过程见 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)。
 
 ---
 
@@ -117,9 +117,6 @@ python test_fixes.py      # 38 条回归断言，全绿
 | 缺失字段不崩 | 真实 MCP 数据常缺 `price` / `energy` / `sodium`，一律兜底 |
 | 结论不越界 | 预算 30 不得开出 ¥31.5（1200 组随机组合验证）；795mg 贴线不得宣告"适合控钠人群" |
 | 结果可复现 | 固定随机种子；活动日历取系统当天而非写死日期 |
-
-> 开发过程中用外部 AI 做过多轮独立代码审查，每条意见都落成了上面的断言。
-> 完整来回记录在 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)。
 
 ## 🧭 诚实性设计（本作品最在意的点）
 - **积分不是免费的钱**：积分按 1 分≈¥x 折算成成本，只有「净省钱 > 0」才推荐兑换；
