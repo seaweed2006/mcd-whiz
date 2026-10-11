@@ -27,8 +27,8 @@
 | 📅 活动 | "最近有啥活动" | 进行中/即将开始的营销活动 + 参与路径 | campaign-calendar, query-party-*, party-order-create |
 | 🎲 盲盒 | 预算、忌口 | 随机套餐 + 麦门文案 | query-meals, calculate-price |
 | 👨‍👩‍👧 亲子/闺蜜 | 人数、预算、场景(family/friends) | 按"每人主食+饮料 + 共享小食"拼分享篮，亲子避辛辣、闺蜜偏拍照甜品 | query-meals, calculate-price, query-store-coupons |
-| 👵 银发适老 | 预算、是否年轻人同行 | 筛选天然软糯单品（麦香鱼/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；可加年轻人常规主食 | query-meals, list-nutrition-foods, calculate-price |
-| 💪 好兄弟 | 人数、预算 | 2 男高蛋白局：每人高蛋白堡 + 共享鸡翅鸡块，报告合计蛋白 | query-meals, calculate-price, query-store-coupons |
+| 👵 银发适老 | 预算、`--companion`、`--low-sodium` | 筛选天然软糯单品（麦香鱼/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；`--low-sodium` 优先低钠并报告本餐钠摄入（控钠人群） | query-meals, list-nutrition-foods, calculate-price |
+| 💪 好兄弟 | 人数、预算、`--protein`(人均目标) | 2 男高蛋白局：每人高蛋白堡 + 共享鸡翅鸡块；`--protein` 定人均蛋白目标，预算内尽量凑够并报告达标/缺口 | query-meals, calculate-price, query-store-coupons |
 
 ## 🚀 快速开始
 
@@ -44,7 +44,9 @@ python mcd_whiz.py --mode share --scenario family --people 2 --budget 60   # 亲
 python mcd_whiz.py --mode share --scenario friends --people 2 --budget 60  # 闺蜜共享篮
 python mcd_whiz.py --mode elderly --budget 40                # 银发适老·软糯（老人单独）
 python mcd_whiz.py --mode elderly --budget 60 --companion    # 年轻人带老人同行（加一份常规主食）
+python mcd_whiz.py --mode elderly --budget 40 --low-sodium   # 银发·低钠优先（报告本餐钠摄入，控钠人群）
 python mcd_whiz.py --mode bros --people 2 --budget 80        # 好兄弟蛋白质局（2 男）
+python mcd_whiz.py --mode bros --people 2 --budget 80 --protein 40  # 好兄弟·人均蛋白目标40g（达标优先）
 ```
 
 ### 2. 接入真实麦当劳 MCP（真实数据驱动）
