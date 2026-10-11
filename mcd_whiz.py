@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 
 # ---------------------------------------------------------------------------
@@ -65,23 +66,26 @@ CAMPAIGNS = [
 
 
 def _combo_price(items):
-    return round(sum(i["price"] for i in items), 2)
+    return round(sum(i["price"] for i in items if i.get("price") is not None), 2)
 
 
-def _best_coupon(total):
+def _best_coupon(total, coupons=None):
+    cps = coupons if coupons is not None else COUPONS
     best = None
-    for c in COUPONS:
+    for c in cps:
         if total >= c["threshold"]:
             if best is None or c["minus"] > best["minus"]:
                 best = c
     return best
 
 
-def mode_saver(budget):
+def mode_saver(budget, items=None, coupons=None):
+    src = items if items is not None else MENU
+    cps = coupons if coupons is not None else COUPONS
     # 贪心：单价热量性价比高 + 在预算内尽量凑满减
-    cand = [m for m in MENU if m["price"] <= budget]
-    # 以"能量/价格"排序挑主食，再补一杯
-    cand.sort(key=lambda m: m["energy"] / m["price"], reverse=True)
+    cand = [m for m in src if m["price"] <= budget]
+    # 以"能量/价格"排序挑主食，再补一杯（无营养数据者按 1/价格 兜底，仍可入选）
+    cand.sort(key=lambda m: ((m["energy"] or 1) / m["price"]), reverse=True)
     picks = []
     spent = 0.0
     for m in cand:
@@ -89,37 +93,37 @@ def mode_saver(budget):
             picks.append(m)
             spent += m["price"]
     total = _combo_price(picks)
-    coupon = _best_coupon(total)
+    coupon = _best_coupon(total, cps) if cps else None
     pay = round(total - coupon["minus"], 2) if coupon else total
     save = round(total - pay, 2)
     return {
         "items": [p["name"] for p in picks],
         "original": total,
-        "coupon": coupon["name"] if coupon else "无可用券",
+        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
         "pay": pay,
         "saved": save,
         "save_rate": f"{round(save / total * 100, 1)}%" if total else "0%",
     }
 
 
-def mode_macro(kcal, protein):
+def mode_macro(kcal, protein, items=None):
     # 暴力搜 1~2 件组合，最小化 |热量-目标| 与 |蛋白-目标|
+    pool = items if items is not None else MENU
     best = None
-    pool = MENU
     for a in pool:
         for b in pool:
-            items = [a] if a is b else [a, b]
-            e = sum(i["energy"] for i in items)
-            p = sum(i["protein"] for i in items)
+            its = [a] if a is b else [a, b]
+            e = sum(i["energy"] for i in its)
+            p = sum(i["protein"] for i in its)
             cost = abs(e - kcal) + abs(p - protein) * 5
             if best is None or cost < best["cost"]:
-                best = {"items": items, "cost": cost}
-    items = best["items"]
-    total = _combo_price(items)
-    e = sum(i["energy"] for i in items)
-    p = sum(i["protein"] for i in items)
+                best = {"items": its, "cost": cost}
+    its = best["items"]
+    total = _combo_price(its)
+    e = sum(i["energy"] for i in its)
+    p = sum(i["protein"] for i in its)
     return {
-        "items": [i["name"] for i in items],
+        "items": [i["name"] for i in its],
         "energy": e,
         "protein": p,
         "price": total,
@@ -159,8 +163,9 @@ def mode_activity(today="2026-10-11", horizon=30):
     return {"ongoing": ongoing, "upcoming": upcoming, "tip": "领券别忘 auto-bind-coupons 一键全领"}
 
 
-def mode_surprise(budget, avoid=""):
-    pool = [m for m in MENU if m["price"] <= budget and (not avoid or avoid not in m["name"])]
+def mode_surprise(budget, avoid="", items=None):
+    src = items if items is not None else MENU
+    pool = [m for m in src if m["price"] <= budget and (not avoid or avoid not in m["name"])]
     picks = random.sample(pool, min(2, len(pool)))
     total = _combo_price(picks)
     lines = [
@@ -172,8 +177,138 @@ def mode_surprise(budget, avoid=""):
     return {"items": [p["name"] for p in picks], "price": total, "quote": random.choice(lines)}
 
 
+# ---------------------------------------------------------------------------
+# 真实数据解析（来自麦当劳官方 MCP 工具返回）
+# ---------------------------------------------------------------------------
+def _extract_json(text):
+    """从 MCP 工具返回的"包装文本"中提取真正的 JSON 对象。"""
+    if "## Original Response" in text:
+        text = text.split("## Original Response", 1)[1]
+    s = text.find("{")
+    e = text.rfind("}")
+    if s != -1 and e != -1 and e > s:
+        try:
+            return json.loads(text[s:e + 1])
+        except Exception:
+            return None
+    return None
+
+
+def _parse_nutrition(text):
+    """list-nutrition-foods -> 餐品营养列表。data 为带表头的文本表。"""
+    obj = _extract_json(text)
+    if not obj:
+        return []
+    data = obj.get("data")
+    if not isinstance(data, str):
+        return []
+    out = []
+    for ln in data.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("[") or ln.startswith("{") or "productName" in ln:
+            continue
+        parts = [p.strip() for p in ln.split(",")]
+        if len(parts) < 9:
+            continue
+        name = ",".join(parts[:-8]) if len(parts) > 9 else parts[0]
+        # 列序：名称,描述(null),千焦Kj,千卡Kcal,蛋白,脂肪,碳水,钠,钙
+        try:
+            kcal = float(parts[-6]); protein = float(parts[-5])
+            fat = float(parts[-4]); carb = float(parts[-3])
+        except ValueError:
+            continue
+        out.append({"name": name, "energy_kcal": kcal, "protein": protein,
+                    "fat": fat, "carb": carb})
+    return out
+
+
+def _parse_meals(text):
+    """query-meals -> 餐品列表（code/name/price）。data.meals 为 code->详情 映射。"""
+    obj = _extract_json(text)
+    if not obj:
+        return []
+    data = obj.get("data", {})
+    if not isinstance(data, dict):
+        return []
+    meals_map = data.get("meals", {})
+    out = []
+    for code, m in meals_map.items():
+        if not isinstance(m, dict):
+            continue
+        name = m.get("name", "")
+        raw = str(m.get("currentPrice", "0") or "0").replace("¥", "").strip()
+        try:
+            price = float(raw)
+        except ValueError:
+            price = 0.0
+        out.append({"code": code, "name": name, "price": price})
+    return out
+
+
+def _tool_text(client, name, args):
+    r = client.call_tool(name, args)
+    res = (r.get("result") or {})
+    txt = ""
+    for cc in (res.get("content") or []):
+        if cc.get("type") == "text":
+            txt += cc.get("text", "")
+    return txt, (res.get("isError", False))
+
+
+def _get_a_store(client):
+    """取一个真实门店（演示默认用上海人民广场附近）。返回 (storeCode, storeName)。"""
+    t, e = _tool_text(client, "query-nearby-stores",
+                      {"beType": 1, "searchType": 2, "city": "上海", "keyword": "人民广场"})
+    if e:
+        return None, None
+    obj = _extract_json(t)
+    if not obj:
+        return None, None
+    data = obj.get("data")
+    stores = data if isinstance(data, list) else (data.get("data") if isinstance(data, dict) else None)
+    if not isinstance(stores, list) or not stores:
+        return None, None
+    s0 = stores[0]
+    return str(s0.get("storeCode")), s0.get("storeName")
+
+
+def fetch_real_items(client):
+    """拉取真实菜单+营养并合并为统一餐品列表（价格来自菜单，热量/蛋白来自营养表）。"""
+    store_code, store_name = _get_a_store(client)
+    meals = []
+    if store_code:
+        meals_txt, e = _tool_text(client, "query-meals",
+                                  {"storeCode": store_code, "orderType": 1, "beType": 1})
+        if not e:
+            meals = _parse_meals(meals_txt)
+    nutri_txt, _ = _tool_text(client, "list-nutrition-foods", {})
+    nutri = _parse_nutrition(nutri_txt)
+    by_name = {n["name"]: n for n in nutri}
+    items = []
+    meal_names = set()
+    for m in meals:
+        n = by_name.get(m["name"])
+        items.append({
+            "code": m["code"], "name": m["name"], "price": m["price"],
+            "energy": n["energy_kcal"] if n else None,
+            "protein": n["protein"] if n else None,
+            "fat": n["fat"] if n else None,
+            "carb": n["carb"] if n else None,
+        })
+        meal_names.add(m["name"])
+    # 以营养表补齐（套餐/组合餐在营养表里没有同名项，这里用个体项补足控卡池）
+    for n in nutri:
+        if n["name"] not in meal_names:
+            items.append({
+                "code": "", "name": n["name"], "price": None,
+                "energy": n["energy_kcal"], "protein": n["protein"],
+                "fat": n["fat"], "carb": n["carb"],
+            })
+    return items, len(meals), len(nutri), store_name
+
+
 def run_live(token):
-    """连接真实麦当劳 MCP：握手、列出工具、跑只读工具抽样，并打印五种模式的工具映射。"""
+    """连接真实麦当劳 MCP：握手、列工具、校验五模式工具，并用真实数据跑省钱/控卡/盲盒。"""
     try:
         from mcp_client import McpClient
     except ImportError:
@@ -188,9 +323,11 @@ def run_live(token):
     c.initialize()
     tools = c.list_tools()
     names = [t["name"] for t in tools]
-    print(f"✅ 已连接。当前可用工具 {len(names)} 个：")
-    for n in names:
+    print(f"✅ 已连接。当前可用工具 {len(names)} 个（前 10）：")
+    for n in names[:10]:
         print("   -", n)
+    if len(names) > 10:
+        print(f"   …（共 {len(names)} 个）")
 
     # 五种模式 → 真实工具映射（只校验“工具是否可用”，不触发任何写操作）
     mapping = {
@@ -207,16 +344,33 @@ def run_live(token):
         flag = "✅ 全部就绪" if not miss else f"⚠️ 缺 {miss}"
         print(f"  [{mode}] {flag}")
 
-    # 只读工具真实数据抽样（安全，均为查询类，不会下单/领券）
-    print("\n>>> 只读工具真实数据抽样：")
-    demo = c.safe_demo()
-    for name, s in demo.items():
-        print(f"\n  [{name}]")
-        if "error" in s:
-            print("    错误:", s["error"])
-        else:
-            print("    isError:", s.get("isError"), "| 数据:", (s.get("text") or "")[:260])
-    print("\n--- 真实接入验证完成（未执行任何写操作：下单/领券需用户显式确认）---")
+    # ---- 拉取真实菜单 + 营养，跑真·省钱/控卡/盲盒 ----
+    print("\n>>> 拉取真实菜单与营养数据（query-nearby-stores + query-meals + list-nutrition-foods）...")
+    items, n_meals, n_nutri, store_name = fetch_real_items(c)
+    if n_meals:
+        print(f"  已定位门店：{store_name}（演示默认上海人民广场附近）")
+    print(f"  真实餐品（含价格+营养）合并得到 {len(items)} 项（菜单 {n_meals} / 营养 {n_nutri}）")
+    if not items:
+        print("  ⚠️ 真实数据解析为空，改用内置样本演示。")
+        items = MENU
+
+    print("\n========== 真实数据驱动的三模式 ==========")
+    price_items = [i for i in items if i["price"] is not None]
+    macro_items = [i for i in items if i["energy"] is not None and i["protein"] is not None]
+    print(f"（省钱/盲盒用 {len(price_items)} 个真实价格餐品；控卡用 {len(macro_items)} 个真实营养餐品）")
+    print("\n[真实·省钱] 预算 50 元：")
+    print(json.dumps(mode_saver(50, items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·控卡] 目标 600 kcal / 30 g 蛋白：")
+    print(json.dumps(mode_macro(600, 30, items=macro_items), ensure_ascii=False, indent=2))
+    print("\n[真实·盲盒] 预算 30 元：")
+    print(json.dumps(mode_surprise(30, items=price_items), ensure_ascii=False, indent=2))
+
+    # 活动模式：真实 campaign-calendar 抽样
+    print("\n[真实·活动] 当前营销活动（campaign-calendar）：")
+    cal_txt, err = _tool_text(c, "campaign-calendar", {})
+    print(cal_txt[:600] if cal_txt else ("  (isError=%s)" % err))
+
+    print("\n--- 真实接入验证完成（全程只读：未执行下单/领券等任何写操作）---")
 
 
 def main():
