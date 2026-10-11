@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>麦麦精算师 · 2026 M-CODE 参赛展示</title>
+<style>
+  :root{
+    --bg:#fffdf7; --card:#ffffff; --ink:#2b2b2b; --sub:#6b6b6b;
+    --brand:#ff2e3a; --brand2:#ffc600; --line:#f0e6d2; --soft:#fff4f4;
+    --green:#1a9e5c; --blue:#2b6fd6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6;padding:32px 16px}
+  .wrap{max-width:1180px;margin:0 auto}
+  header{background:linear-gradient(135deg,var(--brand),#ff6a3d);color:#fff;border-radius:18px;padding:30px 34px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-shadow:0 8px 24px rgba(255,46,58,.22)}
+  header h1{font-size:30px;letter-spacing:1px}
+  header .tag{display:inline-block;background:var(--brand2);color:#3a2a00;font-weight:700;padding:3px 12px;border-radius:999px;font-size:13px;margin-top:8px}
+  header .meta{font-size:13px;opacity:.92;text-align:right}
+  .lead{margin:22px 2px 8px;color:var(--sub);font-size:15px}
+  .sec-title{font-size:19px;font-weight:800;margin:30px 2px 14px;display:flex;align-items:center;gap:8px}
+  .sec-title::before{content:"";width:6px;height:20px;background:var(--brand);border-radius:3px;display:inline-block}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .m{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;transition:.15s}
+  .m:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.07)}
+  .m .ico{font-size:24px}
+  .m h3{font-size:16px;margin:6px 0 4px}
+  .m p{font-size:13px;color:var(--sub)}
+  .m .cmd{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--soft);color:#b00;border-radius:8px;padding:6px 8px;word-break:break-all}
+  .feat{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:6px}
+  @media(max-width:820px){.feat{grid-template-columns:repeat(2,1fr)}}
+  .f{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+  .f b{display:block;font-size:24px;color:var(--brand)}
+  .f span{font-size:12px;color:var(--sub)}
+  .demo{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:6px}
+  .demo .row{display:grid;grid-template-columns:130px 1fr 120px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center;font-size:14px}
+  .demo .row:last-child{border-bottom:none}
+  .demo .row.head{background:#fbf3f3;font-weight:700;color:#a00;font-size:13px}
+  .demo .mode{font-weight:700;color:var(--blue)}
+  .demo .pay{text-align:right;font-weight:800;color:var(--green);font-size:15px}
+  .demo .pay small{display:block;color:var(--sub);font-weight:500;font-size:11px}
+  footer{margin-top:30px;background:#2b2b2b;color:#eee;border-radius:16px;padding:22px 28px;font-size:13px;line-height:1.8}
+  footer a{color:var(--brand2);text-decoration:none}
+  footer .team{font-size:16px;font-weight:800;color:#fff}
+  .badge{display:inline-block;background:var(--soft);color:#b00;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>🍔 麦麦精算师 MCD Whiz</h1>
+      <div class="tag">2026 M-CODE 大赛 · 麦当劳官方 MCP 参赛作品</div>
+      <p style="margin-top:10px;font-size:14px;opacity:.95">一个 Skill，把多个麦当劳 MCP 工具编排成 9 种点餐决策模式</p>
+    </div>
+    <div class="meta">
+      团队：乔仔爱吃麦麦<br>
+      邮箱：seaweed2006@qq.com<br>
+      仓库：github.com/seaweed2006/mcd-whiz<br>
+      报名：Issue #22
+    </div>
+  </header>
+
+  <p class="lead">输入<b>预算 / 健身目标 / 忌口 / 场景</b>，自动编排官方 MCP 工具（菜单、营养、优惠券、积分商城、会员账户、活动日历、下单），输出可执行的省钱 / 控卡 / 积分 / 会员 / 活动 / 盲盒 / 亲子闺蜜 / 银发适老 / 好兄弟 方案。<span class="badge">零依赖离线可跑</span><span class="badge">已接真实 MCP 数据</span><span class="badge">全程只读·安全</span></p>
+
+  <div class="sec-title">九大模式</div>
+  <div class="grid">
+    <div class="m"><div class="ico">💰</div><h3>省钱 saver</h3><p>预算内搜最便宜组合 + 满减券叠加</p><div class="cmd">--mode saver --budget 30</div></div>
+    <div class="m"><div class="ico">🥗</div><h3>控卡 macro</h3><p>按热量/蛋白目标配餐，调用营养表</p><div class="cmd">--mode macro --kcal 600</div></div>
+    <div class="m"><div class="ico">🎟️</div><h3>凑积分 points</h3><p>估算积分"到手价值/积分"，过期急救</p><div class="cmd">--mode points --balance 3200</div></div>
+    <div class="m"><div class="ico">🪪</div><h3>会员 member</h3><p>预算内搜最优 + 卡包券 + 积分券替换单品</p><div class="cmd">--mode member --budget 30</div></div>
+    <div class="m"><div class="ico">📅</div><h3>活动 activity</h3><p>进行中/即将开始活动 + 参与路径</p><div class="cmd">--mode activity</div></div>
+    <div class="m"><div class="ico">🎲</div><h3>盲盒 surprise</h3><p>预算+忌口随机主食+小食组合</p><div class="cmd">--mode surprise --budget 30</div></div>
+    <div class="m"><div class="ico">👨‍👩‍👧</div><h3>亲子/闺蜜 share</h3><p>每人主食+饮料+共享小食分享篮</p><div class="cmd">--mode share --scenario family</div></div>
+    <div class="m"><div class="ico">👵</div><h3>银发适老 elderly</h3><p>天然软糯筛选+避辣避骨，可低钠</p><div class="cmd">--mode elderly --low-sodium</div></div>
+    <div class="m"><div class="ico">💪</div><h3>好兄弟 bros</h3><p>多人高蛋白局，定人均蛋白目标</p><div class="cmd">--mode bros --protein 40</div></div>
+  </div>
+
+  <div class="sec-title">技术亮点</div>
+  <div class="feat">
+    <div class="f"><b>9</b><span>决策模式</span></div>
+    <div class="f"><b>35</b><span>已编排 MCP 工具</span></div>
+    <div class="f"><b>0</b><span>第三方依赖</span></div>
+    <div class="f"><b>100%</b><span>真实数据驱动</span></div>
+  </div>
+
+  <div class="sec-title">真实数据实跑示例（上海门店 · 全程只读）</div>
+  <div class="demo">
+    <div class="row head"><div>模式</div><div>方案</div><div>到手价</div></div>
+    <div class="row"><div class="mode">会员 30</div><div>培根蔬萃双层牛堡 + 圆筒冰淇淋 → 会员券-5 + 圆筒积分券替换</div><div class="pay">¥19.5<small>省 ¥10</small></div></div>
+    <div class="row"><div class="mode">盲盒 30</div><div>高达吉士双牛堡 + 灰焰圆筒</div><div class="pay">¥27.5</div></div>
+    <div class="row"><div class="mode">亲子 2人/60</div><div>板烧鸡腿堡 + 龙焰鸡腿堡 + 100%苹果汁(盒装)</div><div class="pay">¥44<small>人均 ¥22</small></div></div>
+    <div class="row"><div class="mode">闺蜜 2人/60</div><div>麦辣鸡腿堡 + 板烧鸡腿堡 + 美汁源黄金橙橙</div><div class="pay">¥44<small>人均 ¥22</small></div></div>
+    <div class="row"><div class="mode">银发 老人/40</div><div>双层深海鳕鱼堡 + 麦咖啡 + 灰焰圆筒（28g 蛋白）</div><div class="pay">¥30.9</div></div>
+    <div class="row"><div class="mode">银发 带老人/60</div><div>上述 + 麦香鸡（43g 蛋白，年轻人份）</div><div class="pay">¥40.9</div></div>
+    <div class="row"><div class="mode">银发 低钠/40</div><div>麦香鱼 + 麦咖啡 + 苹果片（钠 556mg ≤800 达标）</div><div class="pay">¥30.9</div></div>
+    <div class="row"><div class="mode">好兄弟 2男/80</div><div>培根安格斯厚牛堡 + 芝士安格斯厚牛堡 + 韩式甜辣鸡块（66g 蛋白）</div><div class="pay">¥62.9</div></div>
+  </div>
+
+  <footer>
+    <div class="team">乔仔爱吃麦麦 · MCD Whiz</div>
+    联系方式：seaweed2006@qq.com ｜ 仓库：<a href="https://github.com/seaweed2006/mcd-whiz">github.com/seaweed2006/mcd-whiz</a> ｜ 报名 Issue：<a href="https://github.com/M-China/mcd-mcp-server/issues/22">#22</a><br>
+    基于麦当劳官方 MCP（M-China/mcd-mcp-server）开发 · 覆盖官方三大建议方向（套餐定制 / 省钱 / 活动推荐）并扩展至积分、会员卡联动、盲盒、亲子闺蜜、银发适老、好兄弟共九模式。<br>
+    <span style="opacity:.7">Token 不落盘 · 手机号脱敏 · 价格单位区分 · 全程只读、支付由用户完成。</span>
+  </footer>
+
+</div>
+</body>
+</html>
