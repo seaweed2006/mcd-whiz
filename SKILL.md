@@ -1,12 +1,12 @@
 ---
 name: mcd-whiz
-description: 麦麦精算师——基于麦当劳官方 MCP（M-China/mcd-mcp-server）的多目标最优点餐助手。当用户想点麦当劳、比价、算热量/营养、凑积分、领麦麦省券、做点餐决策、用会员卡/积分省钱时使用。输入预算/健身目标/忌口/场景，自动编排麦当劳 MCP 工具（query-meals、list-nutrition-foods、calculate-price、query-store-coupons、available-coupons、query-my-coupons、query-my-account、mall-points-products 等），输出「最省钱 / 最控卡 / 最值积分 / 会员卡×套餐联动 / 活动推荐 / 盲盒 / 亲子闺蜜共享」套餐方案，并支持一键领券与代下单（支付由用户完成）。
+description: 麦麦精算师——基于麦当劳官方 MCP（M-China/mcd-mcp-server）的多目标最优点餐助手。当用户想点麦当劳、比价、算热量/营养、凑积分、领麦麦省券、做点餐决策、用会员卡/积分省钱时使用。输入预算/健身目标/忌口/场景，自动编排麦当劳 MCP 工具（query-meals、list-nutrition-foods、calculate-price、query-store-coupons、available-coupons、query-my-coupons、query-my-account、mall-points-products 等），输出「最省钱 / 最控卡 / 最值积分 / 会员卡×套餐联动 / 活动推荐 / 盲盒 / 亲子闺蜜共享 / 银发适老 / 好兄弟蛋白质」套餐方案，并支持一键领券与代下单（支付由用户完成）。
 ---
 
 # 麦麦精算师 (MCD Whiz)
 
 把"今天吃什么麦当劳"变成一道可计算的题。一个基于麦当劳中国官方 MCP 的 Agent Skill，
-覆盖 **省钱 / 控卡 / 凑积分 / 会员卡×套餐 / 活动推荐 / 盲盒 / 亲子闺蜜共享** 七种决策模式，把分散的 MCP 工具编排成一条用户愿意每天用的闭环。
+覆盖 **省钱 / 控卡 / 凑积分 / 会员卡×套餐 / 活动推荐 / 盲盒 / 亲子闺蜜共享 / 银发适老 / 好兄弟蛋白质** 九种决策模式，把分散的 MCP 工具编排成一条用户愿意每天用的闭环。
 
 ## 它能做什么
 
@@ -19,6 +19,8 @@ description: 麦麦精算师——基于麦当劳官方 MCP（M-China/mcd-mcp-se
 | 活动 | "最近有什么活动别错过" | 活动日历分「进行中/即将开始」并给参与路径 | campaign-calendar, query-party-city/store/date/session, party-order-create |
 | 盲盒 | "30 块、不要香菜，随便来" | 随机生成套餐 + 一句麦门文案 | query-meals, calculate-price |
 | 亲子/闺蜜 | "带娃/和闺蜜 2 人、60 块怎么点" | 按人数与场景拼"每人主食+饮料 + 共享小食"分享篮，亲子避辛辣、闺蜜偏拍照甜品 | query-meals, calculate-price, query-store-coupons |
+| 银发适老 | "带牙口不好的老人怎么点软糯的" | 筛选天然软质单品（鳕鱼堡/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；可加年轻人常规主食 | query-meals, list-nutrition-foods, calculate-price |
+| 好兄弟 | "2 个男生练后补蛋白、80 块" | 每人高蛋白堡 + 共享鸡翅鸡块，报告合计蛋白/人均蛋白 | query-meals, calculate-price, query-store-coupons |
 
 ## 工作流程（Agent 必读）
 
@@ -47,6 +49,9 @@ python mcd_whiz.py --mode points --balance 3200
 python mcd_whiz.py --mode member     # 会员卡×套餐联动（离线样本）
 python mcd_whiz.py --mode share --scenario family --people 2 --budget 60   # 亲子共享篮
 python mcd_whiz.py --mode share --scenario friends --people 2 --budget 60 # 闺蜜共享篮
+python mcd_whiz.py --mode elderly --budget 40                # 银发适老·软糯（老人单独）
+python mcd_whiz.py --mode elderly --budget 60 --companion    # 年轻人带老人同行（加一份常规主食）
+python mcd_whiz.py --mode bros --people 2 --budget 80        # 好兄弟蛋白质局（2 男）
 ```
 
 接入真实麦当劳 MCP（含会员/积分真实数据）见 `MCP_INTEGRATION.md`；参赛信息见 `CONTEST.md`。
