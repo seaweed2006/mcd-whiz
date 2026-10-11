@@ -23,7 +23,7 @@
 | 💰 省钱 | 预算 | 用券/不用券最优组合 + 省钱率 | query-meals, calculate-price, query-store-coupons, available-coupons, auto-bind-coupons |
 | 🥗 控卡 | 减脂/增肌目标、热量、蛋白 | 达标套餐 + 营养明细 | list-nutrition-foods, query-meals, calculate-price |
 | 🎟️ 积分 | 积分余额 | 用真实菜单价估算"到手价值/积分"，最值兑换 | query-my-account, mall-points-products, mall-product-detail |
-| 🪪 会员 | "我是会员，这套餐怎么最省" | 卡包券 + 积分券替换单品 + 过期积分急救 → 会员到手价 | query-my-account, query-my-coupons, mall-points-products, query-meals |
+| 🪪 会员 | "我是会员，今天 30 块怎么点最省" | 预算内搜最优组合 + 卡包券 + 积分券替换单品 + 过期积分急救 → 会员到手价 | query-my-account, query-my-coupons, mall-points-products, query-meals |
 | 📅 活动 | "最近有啥活动" | 进行中/即将开始的营销活动 + 参与路径 | campaign-calendar, query-party-*, party-order-create |
 | 🎲 盲盒 | 预算、忌口 | 随机套餐 + 麦门文案 | query-meals, calculate-price |
 
@@ -35,7 +35,8 @@ python mcd_whiz.py --demo
 python mcd_whiz.py --mode saver --budget 50
 python mcd_whiz.py --mode macro --kcal 600 --protein 30
 python mcd_whiz.py --mode points --balance 3200
-python mcd_whiz.py --mode member     # 会员卡×套餐联动（离线样本）
+python mcd_whiz.py --mode member     # 会员卡×套餐联动（离线样本·自动套餐）
+python mcd_whiz.py --mode member --budget 30   # 预算内搜最优会员套餐（如"今天30块怎么点最省"）
 ```
 
 ### 2. 接入真实麦当劳 MCP（真实数据驱动）
