@@ -70,6 +70,10 @@ python mcd_whiz.py --mode bros --people 2 --budget 80        # 好兄弟蛋白�
 python mcd_whiz.py --mode bros --people 2 --budget 80 --protein 40  # 好兄弟·人均蛋白目标40g（达标优先）
 ```
 
+**安静地逐屏看**（推荐给评审 / 录屏）：`--demo-real` 一次输出 13 个模式共 300 多行，
+用 `python record_demo.py` 可以**按回车逐屏播放**，节奏自己掌控；`--per 2` 是每屏两个模式的精简版。
+分镜与旁白逐字稿见 [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md)。
+
 ### 2. 接入真实麦当劳 MCP（真实数据驱动）
 先复制 `.env.example` 为 `.env` 填入你的 Token（`.env` 已被 `.gitignore` 忽略，不会泄露）：
 ```bash
@@ -134,6 +138,8 @@ mcd-whiz/
 ├── mcd_whiz.py           # 离线演示 + 真实MCP接入入口（零依赖）
 ├── mcp_client.py         # 麦当劳官方 MCP 客户端（Streamable HTTP，零依赖）
 ├── capture_fixture.py    # 抓取真实数据 → 生成 public/private 两份快照
+├── record_demo.py       # 演示录制助手：把回放切成屏，按回车逐屏播放
+├── DEMO_SCRIPT.md       # 演示录屏脚本（分镜 + 旁白逐字稿）
 ├── fixtures/
 │   ├── real_snapshot_public.json    # 真实数据快照·公开段（随仓库，评委可复现）
 │   └── real_snapshot_private.json   # 真实数据快照·私有段（本地，已 gitignore）
