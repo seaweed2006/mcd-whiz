@@ -138,6 +138,16 @@ class TestShareCounts(unittest.TestCase):
         total = sum(out["counts"].values())
         self.assertEqual(total, len(out["basket"]), "分类计数加总必须等于实际件数")
 
+    def test_family_tip_is_consistent_with_budget_left(self):
+        """预算花满时不能再说"可加购开心乐园餐"（Kimi 第三轮观察）"""
+        for budget in (30, 40, 60, 90):
+            out = M.mode_share(budget, people=2, scenario="family")
+            self.assertAlmostEqual(out["budget_left"], round(budget - out["pay"], 2), places=2)
+            if out["budget_left"] <= 0:
+                self.assertIn("已用满", out["tips"])
+            else:
+                self.assertNotIn("已用满", out["tips"])
+
 
 class TestRound2HonestReplay(unittest.TestCase):
     """🔴 第二轮-必修1：--demo-real 不得"零虚构"，缺失段必须如实标注占位"""
@@ -176,6 +186,19 @@ class TestRound2HonestReplay(unittest.TestCase):
             self.assertNotIn(k, pub, "公开快照不得包含个人账户/卡包券")
         gi = open(os.path.join(os.path.dirname(d), ".gitignore"), encoding="utf-8").read()
         self.assertIn("real_snapshot_private.json", gi, "私有快照必须被 .gitignore 忽略")
+
+    def test_snapshot_header_prints_filename_only(self):
+        """回放头部只打印文件名：绝对路径在 Windows 下会带上 C:\\Users\\<你的名字>"""
+        import os
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            M.run_snapshot_replay()
+        out = buf.getvalue()
+        self.assertNotIn(":\\", out.split("快照文件")[1].split("\n")[0],
+                         "不应打印快照绝对路径（会泄露本机用户名）")
+        self.assertIn("real_snapshot_public.json", out)
 
     def test_load_snapshot_returns_three_values(self):
         snap, path, merged = M.load_snapshot()
@@ -256,6 +279,52 @@ class TestRound2PointsHonesty(unittest.TestCase):
         self.assertAlmostEqual(plan["net_saved"], round(22.5 - 18.8 - 50 * 0.047, 2), places=2)
 
 
+class TestRound3SurpriseBudget(unittest.TestCase):
+    """🟠 第三轮：盲盒退化路径不看总价 → 预算 30 开出 ¥31.5（真实数据可复现）"""
+
+    def _real_items(self):
+        snap, _p, _m = M.load_snapshot()
+        return [i for i in snap["items"] if (i.get("price") or 0) > 0]
+
+    def test_surprise_never_exceeds_budget_real_data(self):
+        """多预算 × 多种子：盲盒总价必须始终 ≤ 预算"""
+        import random
+        items = self._real_items()
+        bad = []
+        for seed in range(60):
+            for budget in (12, 15, 20, 30, 45, 60):
+                random.seed(seed)
+                out = M.mode_surprise(budget, items=items)
+                if out["price"] > budget + 1e-9:
+                    bad.append((seed, budget, out["price"]))
+        self.assertEqual(bad, [], "以下组合超出预算：%s" % bad[:5])
+
+    def test_surprise_never_exceeds_budget_offline(self):
+        import random
+        bad = []
+        for seed in range(60):
+            for budget in (15, 20, 25, 30, 50):
+                random.seed(seed)
+                out = M.mode_surprise(budget)
+                if out["price"] > budget + 1e-9:
+                    bad.append((seed, budget, out["price"]))
+        self.assertEqual(bad, [], "以下组合超出预算：%s" % bad[:5])
+
+    def test_surprise_always_returns_something(self):
+        """预算 ≥ 最便宜单品时必须给出非空组合"""
+        items = self._real_items()
+        out = M.mode_surprise(15, items=items)
+        self.assertTrue(out["items"])
+
+    def test_quote_matches_basket(self):
+        """「麦旋风+薯条」不该配「自律即自由」这类违和文案"""
+        picks = [{"name": "泷愿成真麦旋风——大米风味", "price": 22.0, "energy": None},
+                 {"name": "月下相思扭扭薯", "price": 9.5, "energy": None}]
+        q = M._surprise_quote(picks)
+        self.assertNotIn("自律", q)
+        self.assertNotIn("狠人", q)
+
+
 class TestRound2Robustness(unittest.TestCase):
     """🟠 第二轮-必修2：单个工具/阶段挂掉不能让整个流程崩"""
 
@@ -277,5 +346,5 @@ class TestRound2Robustness(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    print("运行回归测试：验证两轮外部代码审查提出的问题是否修复\n")
+    print("运行回归测试：验证三轮外部代码审查提出的问题是否修复\n")
     unittest.main(verbosity=2)
