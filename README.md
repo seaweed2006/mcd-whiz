@@ -1,7 +1,7 @@
 # 麦麦精算师 (MCD Whiz)
 
 > 基于 **麦当劳中国官方 MCP（M-China/mcd-mcp-server）** 的多目标最优点餐 Agent Skill。
-> 把"今天吃什么麦当劳"变成一道可计算的题：省钱 / 控卡 / 凑积分 / 会员卡×套餐 / 盲盒 / 亲子闺蜜共享，一套搞定。
+> 把"今天吃什么麦当劳"变成一道可计算的题：省钱 / 控卡 / 凑积分 / 会员卡×套餐 / 盲盒 / 亲子闺蜜共享 / 银发适老 / 好兄弟蛋白质，一套搞定。
 > **2026 麦当劳程序员创意开发大赛（M-CODE）参赛作品。**
 
 ---
@@ -12,8 +12,8 @@
 但普通用户面对的是一堆按钮和价格，算不清"怎么点最划算""减脂期能吃啥""积分换啥最值"。
 现有参赛作品多是单一角度（人格卡 / 卡路里 / 纯下单 / 省钱）。
 
-**麦麦精算师**的差异点：用**一个 Skill 把多个 MCP 工具编排成七种决策模式**——
-恰好覆盖官方建议的三大方向（套餐定制 / 省钱 / 活动推荐）再加积分、会员卡联动、盲盒与亲子/闺蜜共享，
+**麦麦精算师**的差异点：用**一个 Skill 把多个 MCP 工具编排成九种决策模式**——
+恰好覆盖官方建议的三大方向（套餐定制 / 省钱 / 活动推荐）再加积分、会员卡联动、盲盒、亲子/闺蜜共享、银发适老（软糯）与好兄弟蛋白质活动，
 即实用又有分享点，且**零依赖离线可跑**。
 
 ## ✨ 功能
@@ -27,6 +27,8 @@
 | 📅 活动 | "最近有啥活动" | 进行中/即将开始的营销活动 + 参与路径 | campaign-calendar, query-party-*, party-order-create |
 | 🎲 盲盒 | 预算、忌口 | 随机套餐 + 麦门文案 | query-meals, calculate-price |
 | 👨‍👩‍👧 亲子/闺蜜 | 人数、预算、场景(family/friends) | 按"每人主食+饮料 + 共享小食"拼分享篮，亲子避辛辣、闺蜜偏拍照甜品 | query-meals, calculate-price, query-store-coupons |
+| 👵 银发适老 | 预算、是否年轻人同行 | 筛选天然软糯单品（麦香鱼/板烧堡/玉米杯/苹果片/圆筒），避辣避骨；可加年轻人常规主食 | query-meals, list-nutrition-foods, calculate-price |
+| 💪 好兄弟 | 人数、预算 | 2 男高蛋白局：每人高蛋白堡 + 共享鸡翅鸡块，报告合计蛋白 | query-meals, calculate-price, query-store-coupons |
 
 ## 🚀 快速开始
 
@@ -40,6 +42,9 @@ python mcd_whiz.py --mode member     # 会员卡×套餐联动（离线样本·�
 python mcd_whiz.py --mode member --budget 30   # 预算内搜最优会员套餐（如"今天30块怎么点最省"）
 python mcd_whiz.py --mode share --scenario family --people 2 --budget 60   # 亲子共享篮
 python mcd_whiz.py --mode share --scenario friends --people 2 --budget 60  # 闺蜜共享篮
+python mcd_whiz.py --mode elderly --budget 40                # 银发适老·软糯（老人单独）
+python mcd_whiz.py --mode elderly --budget 60 --companion    # 年轻人带老人同行（加一份常规主食）
+python mcd_whiz.py --mode bros --people 2 --budget 80        # 好兄弟蛋白质局（2 男）
 ```
 
 ### 2. 接入真实麦当劳 MCP（真实数据驱动）
@@ -49,14 +54,14 @@ cp .env.example .env        # 然后编辑 .env 填入 MCD_MCP_TOKEN
 python mcd_whiz.py --live   # 连接 mcp.mcd.cn，用真实数据跑三模式
 ```
 `--live` 会做这些（**全程只读，绝不下单/领券**）：
-1. 与官方 MCP 握手、列出全部工具（35 个），并校验七模式所需工具是否就绪；
+1. 与官方 MCP 握手、列出全部工具（35 个），并校验九模式所需工具是否就绪；
 2. 取一个真实门店 → 拉**真实菜单价格**（`query-nearby-stores` + `query-meals`）；
 3. 拉**真实营养数据**（`list-nutrition-foods`，160+ 餐品的热量/蛋白/脂肪/碳水）；
-4. 用上述真实数据**实算**四模式：省钱（含麦麦省满减）、控卡（按热量/蛋白目标配餐）、盲盒；
+4. 用上述真实数据**实算**各模式：省钱（含麦麦省满减）、控卡（按热量/蛋白目标配餐）、盲盒、亲子/闺蜜、银发适老、好兄弟蛋白质；
 5. 拉**真实积分账户 + 积分商城**（`query-my-account` + `mall-points-products`，按类目筛食品券），用真实菜单价估算"到手价值/积分"算出最值兑换；
 6. 拉**会员卡包券**（`query-my-coupons`），把"积分券替换套餐单品 + 过期积分急救"编排成会员到手价；
 7. 抽样**真实活动日历**（`campaign-calendar` 当日活动）。
-> 控卡/省钱/盲盒/积分/会员的算法与离线版一致，只是输入换成了官方实时数据；活动模式直接展示官方活动文案。
+> 控卡/省钱/盲盒/积分/会员/亲子/银发/好兄弟的算法与离线版一致，只是输入换成了官方实时数据；活动模式直接展示官方活动文案。
 
 也可以直接传 Token（不写文件）：
 ```bash
