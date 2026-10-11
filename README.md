@@ -36,15 +36,19 @@ python mcd_whiz.py --mode macro --kcal 600 --protein 30
 python mcd_whiz.py --mode points --balance 3200
 ```
 
-### 2. 接入真实麦当劳 MCP（验证连接 + 只读抽样）
+### 2. 接入真实麦当劳 MCP（真实数据驱动）
 先复制 `.env.example` 为 `.env` 填入你的 Token（`.env` 已被 `.gitignore` 忽略，不会泄露）：
 ```bash
 cp .env.example .env        # 然后编辑 .env 填入 MCD_MCP_TOKEN
-python mcd_whiz.py --live   # 连接 mcp.mcd.cn：握手 → 列工具 → 跑只读工具抽样
+python mcd_whiz.py --live   # 连接 mcp.mcd.cn，用真实数据跑三模式
 ```
-`--live` 会做三件事：①与官方 MCP 握手并列出全部工具；②校验五种模式所需工具是否就绪；
-③对一批**只读工具**（时间、营养、活动日历、账户、积分商城）抽样真实数据。
-**全程不执行任何写操作（不下单、不领券），安全可反复运行。**
+`--live` 会做这些（**全程只读，绝不下单/领券**）：
+1. 与官方 MCP 握手、列出全部工具（35 个），并校验五模式所需工具是否就绪；
+2. 取一个真实门店 → 拉**真实菜单价格**（`query-nearby-stores` + `query-meals`）；
+3. 拉**真实营养数据**（`list-nutrition-foods`，160+ 餐品的热量/蛋白/脂肪/碳水）；
+4. 用上述真实数据**实算**三模式：省钱（含麦麦省满减）、控卡（按热量/蛋白目标配餐）、盲盒；
+5. 抽样**真实活动日历**（`campaign-calendar` 当日活动）。
+> 控卡/省钱/盲盒的算法与离线版一致，只是输入换成了官方实时数据；活动模式直接展示官方活动文案。
 
 也可以直接传 Token（不写文件）：
 ```bash
