@@ -11,6 +11,7 @@
 依赖：Python 3.7+ 标准库，零第三方依赖（--live 走 mcp_client.py，同为stdlib）。
 """
 import argparse
+import itertools
 import json
 import os
 import random
@@ -43,12 +44,14 @@ COUPONS = [
     {"name": "会员券-满25减5", "threshold": 25.0, "minus": 5.0},
 ]
 
-# 样本麦麦商城兑换（value 单位：元）
+# 样本麦麦商城兑换（value 单位：元）。券名与 MENU 同名 → 演示"同品积分券替换"
 MALL = [
     {"name": "薯条(中)兑换券", "points": 1200, "value": 12.0},
     {"name": "麦辣鸡翅兑换券", "points": 1800, "value": 18.0},
     {"name": "巨无霸兑换券", "points": 2400, "value": 24.0},
     {"name": "麦旋风兑换券", "points": 1500, "value": 15.0},
+    {"name": "吉士汉堡兑换券", "points": 1200, "value": 8.0},
+    {"name": "板烧鸡腿堡兑换券", "points": 2100, "value": 15.0},
     {"name": "实物-麦麦公仔", "points": 5000, "value": 39.0},
 ]
 
@@ -198,9 +201,25 @@ def mode_activity(today="2026-10-11", horizon=30):
 
 
 def mode_surprise(budget, avoid="", items=None):
+    """盲盒模式：在预算内随机生成一套「像真实点单」的组合。
+    优先「1 主食 + 1 小食」随机配对；若预算/品类不够则退化为随机 1~2 件。
+    传入真实门店价 items 时即为「接真实数据的盲盒」（run_live 默认如此）。"""
     src = items if items is not None else MENU
-    pool = [m for m in src if m["price"] <= budget and (not avoid or avoid not in m["name"])]
-    picks = random.sample(pool, min(2, len(pool)))
+    pool = [m for m in src if m.get("price") is not None and m["price"] <= budget
+            and (not avoid or avoid not in m["name"])]
+    if not pool:
+        return {"items": [], "price": 0.0, "quote": "预算内无可选餐品，调高预算或放宽条件试试～"}
+    mains = [m for m in pool if any(k in m["name"] for k in MAIN_KW)]
+    sides = [m for m in pool if any(k in m["name"] for k in SIDE_KW)]
+    picks = None
+    if mains and sides:
+        main = random.choice(mains)
+        ok_sides = [s for s in sides if s["name"] != main["name"]
+                    and main["price"] + s["price"] <= budget]
+        if ok_sides:
+            picks = [main, random.choice(ok_sides)]
+    if not picks:
+        picks = random.sample(pool, min(2, len(pool)))
     total = _combo_price(picks)
     lines = [
         "今天你是「佛系麦门弟子」🍟",
@@ -221,14 +240,78 @@ def _is_excluded(n):
     return any(k in n for k in SAUCE_KW + DRINK_KW)
 
 
-def mode_member(balance=None, expire_soon=0.0, meals=None, coupons=None, mall_food=None):
+def _member_redeem_plan(combo, balance, mall_food):
+    """对给定套餐找一张积分券替换其中单品，返回省现金的方案或 None。
+    mall_food 为积分商城食品券列表（含 point/price/name）；balance 为可用积分。"""
+    if not combo or not mall_food:
+        return None
+    # 先精确匹配同名单品
+    for item in combo:
+        hit = next((f for f in mall_food
+                    if item["name"] in f["name"] or f["name"] in item["name"]), None)
+        if hit and hit.get("point", 0) <= balance:
+            saved = round((item.get("price") or 0) - hit.get("price", 0), 2)
+            if saved > 0:
+                return {"replace_item": item["name"], "with_coupon": hit["name"],
+                        "cost_points": hit["point"], "cash_topup": hit.get("price"),
+                        "cash_saved": saved}
+    # 退而求其次：仅当某券名能匹配到套餐里某单品时，才做同品替换（避免"把汉堡换成薯条"的误导）
+    ok = [f for f in mall_food if f.get("point", 0) > 0 and f["point"] <= balance]
+    ok.sort(key=lambda f: (f["price"] / f["point"]) if f["point"] else 0, reverse=True)
+    for f in ok:
+        match = next((m for m in combo if m["name"] in f["name"] or f["name"] in m["name"]), None)
+        if match:
+            saved = round((match.get("price", 0) - f.get("price", 0)), 2)
+            if saved > 0:
+                return {"replace_item": match["name"], "with_coupon": f["name"],
+                        "cost_points": f["point"], "cash_topup": f.get("price"),
+                        "cash_saved": saved}
+    return None
+
+
+def _member_combo_search(budget, items, balance, mall_food, coupon_pool=None):
+    """预算内搜最优会员套餐：枚举 1~3 件组合，最大化到手食物价值 + 会员折扣。
+    返回最优方案 dict；无解返回 None。coupon_pool 缺省用全局 COUPONS 作卡包满减代理。"""
+    priced = [m for m in items if m.get("price") is not None and m["price"] > 0]
+    if not priced:
+        return None
+    cps = coupon_pool if coupon_pool is not None else COUPONS
+    # 价值排序（能量/价格 高者优先），限定候选规模避免组合爆炸
+    priced.sort(key=lambda m: ((m.get("energy") or 1) / m["price"]), reverse=True)
+    top = priced[:14]
+    best = None
+    for r in (1, 2, 3):
+        for combo in itertools.combinations(top, r):
+            cash = round(sum(m["price"] for m in combo), 2)
+            if cash > budget:
+                continue
+            coupon = _best_coupon(cash, cps)
+            coupon_minus = coupon["minus"] if coupon else 0.0
+            redeem = _member_redeem_plan(list(combo), balance, mall_food)
+            redeem_saved = redeem["cash_saved"] if redeem else 0.0
+            eff = round(cash - coupon_minus - redeem_saved, 2)
+            if eff < 0:
+                eff = 0.0
+            # 评分：到手食物价值优先，再比会员净省（券+积分）
+            score = cash * 100 + redeem_saved * 10 - coupon_minus
+            if best is None or score > best["score"]:
+                best = {
+                    "combo": list(combo), "cash": cash,
+                    "coupon": coupon["name"] if coupon else None,
+                    "coupon_minus": coupon_minus,
+                    "redeem": redeem, "eff": eff, "score": score,
+                }
+    return best
+
+
+def mode_member(budget=None, balance=None, expire_soon=0.0, meals=None, coupons=None, mall_food=None):
     """会员卡 × 套餐 联动模式。
-    把「会员积分余额 + 卡包券 + 积分商城食品券」与「真实套餐价」编排成一条省钱闭环：
-      ① 先给出一个真实套餐现金价（主食+小食，排除酱料/饮料干扰）；
-      ② 会员卡包若已有券 → 叠加抵扣；
-      ③ 用积分兑换一张食品券替换套餐里的单品 → 省现金、消耗积分；
-      ④ 本月将过期积分 → 急救兑换，别浪费。
-    coupons 来自 _parse_my_coupons；mall_food 为已筛选的食品券列表（含 point/price/name）。
+    把「会员积分余额 + 卡包券 + 积分商城食品券」与「套餐价」编排成一条省钱闭环：
+      · 给定 budget → 在预算内搜最优组合（最大化到手食物价值 + 会员折扣），对应
+        "今天 30 块、我是会员怎么点最省"；
+      · 不给定 budget → 自动选最便宜主食+小食作为代表套餐，演示联动逻辑。
+    会员折扣含：②卡包满减券叠加；③积分券替换单品省现金；④本月过期积分急救。
+    coupons 来自 _parse_my_coupons；mall_food 为积分商城食品券列表（含 point/price/name）；
     meals 为带价格的真实餐品（price 不为 None）。"""
     if meals is None:
         meals = MENU
@@ -239,7 +322,58 @@ def mode_member(balance=None, expire_soon=0.0, meals=None, coupons=None, mall_fo
     if mall_food is None:
         mall_food = [{"name": m["name"], "point": m["points"], "price": m["value"]} for m in MALL]
 
-    # ① 代表套餐：最便宜主食 + 最便宜小食（排除酱料/饮料，主食优先含 堡/腿 等）
+    wallet = coupons.get("count", 0)
+    wallet_samples = coupons.get("samples", [])
+
+    # ④ 本月过期积分急救（两种模式都给提示）
+    expire_tip = ""
+    if expire_soon > 0:
+        low = [f for f in mall_food if f.get("point", 0) > 0 and f["point"] <= expire_soon]
+        low.sort(key=lambda f: f["point"])
+        if low:
+            expire_tip = "本月 %.1f 积分将过期 → 立即兑换「%s」(%.0f 积分)" % (
+                expire_soon, low[0]["name"], low[0]["point"])
+        else:
+            expire_tip = "本月 %.1f 积分将过期，但不足以兑换任何商品，下单攒更多积分再换" % expire_soon
+
+    # ---- 预算模式：在预算内搜最优会员套餐 ----
+    if budget is not None:
+        search = _member_combo_search(budget, meals, balance, mall_food)
+        if search:
+            coupon = search["coupon"]
+            redeem = search["redeem"]
+            eff = search["eff"]
+            saved = round(search["cash"] - eff, 2)
+            return {
+                "budget": budget,
+                "combo": [m["name"] for m in search["combo"]],
+                "combo_cash": search["cash"],
+                "member_wallet_coupons": wallet,
+                "wallet_samples": wallet_samples,
+                "applied_coupon": coupon if coupon else "无可用券（可 auto-bind-coupons 一键领）",
+                "coupon_minus": search["coupon_minus"],
+                "points_redeem_plan": redeem,
+                "expire_rescue": expire_tip,
+                "member_effective_price": eff,
+                "member_saved": saved,
+                "verdict": ("预算 ¥%.2f 内，会员这样点最省：到手食物值 ¥%.2f，卡包券+积分券折后实付 ¥%.2f（省 ¥%.2f）"
+                            % (budget, search["cash"], eff, saved)),
+            }
+        # 预算内无解（预算极低）：退化为「最便宜单品」
+        cheapest = min([m for m in meals if m.get("price") is not None and m["price"] > 0],
+                       key=lambda m: m["price"], default=None)
+        if cheapest:
+            return {
+                "budget": budget, "combo": [cheapest["name"]], "combo_cash": cheapest["price"],
+                "member_wallet_coupons": wallet, "wallet_samples": wallet_samples,
+                "applied_coupon": "无可用券", "coupon_minus": 0.0, "points_redeem_plan": None,
+                "expire_rescue": expire_tip, "member_effective_price": cheapest["price"],
+                "member_saved": 0.0,
+                "verdict": "预算 ¥%.2f 仅够单点「%s」(¥%.2f)，会员折扣暂不够门槛" % (budget, cheapest["name"], cheapest["price"]),
+            }
+        return {"verdict": "无可用餐品数据，请先拉取真实菜单或检查离线样本"}
+
+    # ---- 非预算模式：自动选最便宜主食+小食作代表套餐 ----
     priced = [m for m in meals if m.get("price") is not None and not _is_excluded(m["name"])]
     side_items = [m for m in priced if any(k in m["name"] for k in SIDE_KW)]
     main_candidates = [m for m in priced if any(k in m["name"] for k in MAIN_KW)]
@@ -252,56 +386,9 @@ def mode_member(balance=None, expire_soon=0.0, meals=None, coupons=None, mall_fo
     combo = [m for m in (main, side) if m]
     combo_cash = round(sum(m["price"] for m in combo), 2)
 
-    # ② 会员卡包券
-    wallet = coupons.get("count", 0)
-    wallet_samples = coupons.get("samples", [])
-
-    # ③ 积分兑换食品券替换套餐单品（仅当真省钱才给方案）
-    redeem_plan = None
-    if combo:
-        for item in combo:
-            hit = next((f for f in mall_food
-                        if item["name"] in f["name"] or f["name"] in item["name"]), None)
-            if hit and hit["point"] <= balance:
-                cash_saved = round(item["price"] - hit["price"], 2)
-                if cash_saved > 0:
-                    redeem_plan = {
-                        "replace_item": item["name"],
-                        "with_coupon": hit["name"],
-                        "cost_points": hit["point"],
-                        "cash_topup": hit["price"],
-                        "cash_saved": cash_saved,
-                    }
-                    break
-        if not redeem_plan and mall_food:
-            ok = [f for f in mall_food if f["point"] > 0 and f["point"] <= balance]
-            ok.sort(key=lambda f: (f["price"] / f["point"]) if f["point"] else 0, reverse=True)
-            if ok:
-                f = ok[0]
-                priciest = max(combo, key=lambda m: m["price"])
-                est_saved = round(priciest["price"] - f["price"], 2)
-                if est_saved > 0:
-                    redeem_plan = {
-                        "replace_item": priciest["name"],
-                        "with_coupon": f["name"],
-                        "cost_points": f["point"],
-                        "cash_topup": f["price"],
-                        "cash_saved": est_saved,
-                    }
-
-    # ④ 本月过期积分急救
-    expire_tip = ""
-    if expire_soon > 0:
-        low = [f for f in mall_food if f["point"] > 0 and f["point"] <= expire_soon]
-        low.sort(key=lambda f: f["point"])
-        if low:
-            expire_tip = "本月 %.1f 积分将过期 → 立即兑换「%s」(%.0f 积分)" % (
-                expire_soon, low[0]["name"], low[0]["point"])
-        else:
-            expire_tip = "本月 %.1f 积分将过期，但不足以兑换任何商品，下单攒更多积分再换" % expire_soon
-
+    redeem_plan = _member_redeem_plan(combo, balance, mall_food)
     net = combo_cash
-    if redeem_plan and isinstance(redeem_plan["cash_saved"], (int, float)):
+    if redeem_plan:
         net = round(combo_cash - redeem_plan["cash_saved"], 2)
     saved = round(combo_cash - net, 2)
 
@@ -547,7 +634,7 @@ def run_live(token):
     if len(names) > 10:
         print(f"   …（共 {len(names)} 个）")
 
-    # 五种模式 → 真实工具映射（只校验“工具是否可用”，不触发任何写操作）
+    # 六模式 → 真实工具映射（只校验"工具是否可用"，不触发任何写操作）
     mapping = {
         "省钱 saver": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons", "query-my-coupons"],
         "控卡 macro": ["list-nutrition-foods", "query-meals", "calculate-price"],
@@ -556,7 +643,7 @@ def run_live(token):
         "活动 activity": ["campaign-calendar", "query-party-city", "query-party-store", "party-order-create"],
         "盲盒 surprise": ["query-meals", "calculate-price"],
     }
-    print("\n>>> 五种模式所需工具可用性：")
+    print("\n>>> 六模式所需工具可用性：")
     for mode, need in mapping.items():
         ok = [t for t in need if t in names]
         miss = [t for t in need if t not in names]
@@ -573,7 +660,7 @@ def run_live(token):
         print("  ⚠️ 真实数据解析为空，改用内置样本演示。")
         items = MENU
 
-    print("\n========== 真实数据驱动的四模式 ==========")
+    print("\n========== 真实数据驱动的五模式 ==========")
     price_items = [i for i in items if i["price"] is not None]
     macro_items = [i for i in items if i["energy"] is not None and i["protein"] is not None]
     print(f"（省钱/盲盒用 {len(price_items)} 个真实价格餐品；控卡用 {len(macro_items)} 个真实营养餐品）")
@@ -604,8 +691,12 @@ def run_live(token):
     coup_txt, _ = _tool_text(c, "query-my-coupons", {})
     coupons = _parse_my_coupons(coup_txt)
     print(f"  卡包券 {coupons['count']} 张，示例：{coupons['samples']}")
-    print("\n[真实·会员卡×套餐] 联动省钱：")
+    print("\n[真实·会员卡×套餐] 联动省钱（自动套餐）：")
     print(json.dumps(mode_member(balance=balance, expire_soon=expire_soon, meals=price_items,
+                                 coupons=coupons, mall_food=mall_products),
+                     ensure_ascii=False, indent=2))
+    print("\n[真实·会员卡×套餐] 预算内最优（--mode member --budget 30，真实门店价）：")
+    print(json.dumps(mode_member(budget=30, balance=balance, expire_soon=expire_soon, meals=price_items,
                                  coupons=coupons, mall_food=mall_products),
                      ensure_ascii=False, indent=2))
 
@@ -643,8 +734,10 @@ def main():
         print(json.dumps(mode_macro(600, 30), ensure_ascii=False, indent=2))
         print("\n=== [积分] 余额3200（离线样本） ===")
         print(json.dumps(mode_points(3200), ensure_ascii=False, indent=2))
-        print("\n=== [会员卡×套餐] 联动（离线样本） ===")
+        print("\n=== [会员卡×套餐] 联动（离线样本·自动套餐） ===")
         print(json.dumps(mode_member(), ensure_ascii=False, indent=2))
+        print("\n=== [会员卡×套餐] 预算内最优（--mode member --budget 30） ===")
+        print(json.dumps(mode_member(budget=30), ensure_ascii=False, indent=2))
         print("\n=== [活动] 2026-10-11 起30天 ===")
         print(json.dumps(mode_activity(args.today, args.horizon), ensure_ascii=False, indent=2))
         print("\n=== [盲盒] 预算30 ===")
@@ -660,7 +753,7 @@ def main():
     elif args.mode == "activity":
         out = mode_activity(args.today, args.horizon)
     elif args.mode == "member":
-        out = mode_member()
+        out = mode_member(budget=args.budget)
     else:
         out = mode_surprise(args.budget, args.avoid)
     print(json.dumps(out, ensure_ascii=False, indent=2))
