@@ -131,18 +131,52 @@ def mode_macro(kcal, protein, items=None):
     }
 
 
-def mode_points(balance):
-    ok = [m for m in MALL if m["points"] <= balance]
-    ok.sort(key=lambda m: m["value"] / m["points"], reverse=True)
-    if not ok:
-        return {"tip": "积分不足，去签到/下单攒积分吧", "best": None}
-    best = ok[0]
+def mode_points(balance=None, products=None, expire_soon=0.0, meals=None):
+    """积分模式：用真实积分余额 + 真实积分商城，算出"最值兑换"。
+    products 为 _parse_mall_products 的结果；balance/expire_soon 来自 _parse_my_account；
+    meals 为带价格的真实餐品，用于把"食品券"名称匹配到菜单价，估算真实到手价值。
+    价值估算优先级：①券名含某餐品名→用该餐品菜单价；②商城标注金额(price)作弱代理；
+    ③1积分兑换活动→给名义价值。vpp = 价值/积分*100（每百积分到手价值）。"""
+    if products is None:
+        products = [{"name": m["name"], "point": m["points"], "price": m["value"],
+                     "cat": "商品券", "status": 2} for m in MALL]
+    if balance is None:
+        balance = 3200.0
+    meal_by_name = {}
+    if meals:
+        for m in meals:
+            if m.get("price") is not None:
+                meal_by_name[m["name"]] = m["price"]
+
+    def est_value(p):
+        nm = p["name"]
+        for mn, mp in meal_by_name.items():
+            if mn in nm or nm in mn:
+                return mp
+        if p["price"] > 0:
+            return p["price"]
+        if p["point"] <= 1:
+            return 3.0
+        return 0.0
+
+    on = [p for p in products if p.get("status") == 2 and p["point"] > 0]
+    for p in on:
+        v = est_value(p)
+        p["value"] = v
+        p["vpp"] = round(v / p["point"] * 100, 2) if p["point"] else 0.0
+    on.sort(key=lambda p: p["vpp"], reverse=True)
+    afford = [p for p in on if p["point"] <= balance]
+    afford.sort(key=lambda p: p["vpp"], reverse=True)
+    best = on[0] if on else None
+    best_afford = afford[0] if afford else None
     return {
-        "best": best["name"],
-        "cost_points": best["points"],
-        "value": best["value"],
-        "value_per_100": round(best["value"] / best["points"] * 100, 2),
-        "all_affordable": [m["name"] for m in ok],
+        "available_points": balance,
+        "expire_this_month": expire_soon,
+        "best_value_overall": {k: best[k] for k in ("name", "point", "price", "value", "vpp")} if best else None,
+        "best_affordable_now": {k: best_afford[k] for k in ("name", "point", "price", "value", "vpp")} if best_afford else None,
+        "affordable_count": len(afford),
+        "tip": ("⚠️ 本月 %.1f 积分将过期，优先兑换低分商品别浪费" % expire_soon) if expire_soon > 0
+               else "积分长期有效，可攒着换高价值商品",
     }
 
 
@@ -175,6 +209,114 @@ def mode_surprise(budget, avoid="", items=None):
         "今天你是「快乐水续命派」🥤",
     ]
     return {"items": [p["name"] for p in picks], "price": total, "quote": random.choice(lines)}
+
+
+SAUCE_KW = ["酱", "蘸", "风味", "配料", "调料", "葱", "香菜"]
+DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "旋", "汽", "柠檬", "苹果", "沙拉"]
+SIDE_KW = ["薯条", "鸡翅", "鸡块", "鸡米", "玉米", "派", "麦乐", "nugget", "杯", "圆筒", "旋风", "圣代"]
+MAIN_KW = ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷", "肉", "鱼", "猪"]
+
+
+def _is_excluded(n):
+    return any(k in n for k in SAUCE_KW + DRINK_KW)
+
+
+def mode_member(balance=None, expire_soon=0.0, meals=None, coupons=None, mall_food=None):
+    """会员卡 × 套餐 联动模式。
+    把「会员积分余额 + 卡包券 + 积分商城食品券」与「真实套餐价」编排成一条省钱闭环：
+      ① 先给出一个真实套餐现金价（主食+小食，排除酱料/饮料干扰）；
+      ② 会员卡包若已有券 → 叠加抵扣；
+      ③ 用积分兑换一张食品券替换套餐里的单品 → 省现金、消耗积分；
+      ④ 本月将过期积分 → 急救兑换，别浪费。
+    coupons 来自 _parse_my_coupons；mall_food 为已筛选的食品券列表（含 point/price/name）。
+    meals 为带价格的真实餐品（price 不为 None）。"""
+    if meals is None:
+        meals = MENU
+    if balance is None:
+        balance = 3200.0
+    if coupons is None:
+        coupons = {"count": 0, "samples": []}
+    if mall_food is None:
+        mall_food = [{"name": m["name"], "point": m["points"], "price": m["value"]} for m in MALL]
+
+    # ① 代表套餐：最便宜主食 + 最便宜小食（排除酱料/饮料，主食优先含 堡/腿 等）
+    priced = [m for m in meals if m.get("price") is not None and not _is_excluded(m["name"])]
+    side_items = [m for m in priced if any(k in m["name"] for k in SIDE_KW)]
+    main_candidates = [m for m in priced if any(k in m["name"] for k in MAIN_KW)]
+    if not main_candidates:
+        main_candidates = [m for m in priced if m not in side_items]
+    mains = sorted(main_candidates, key=lambda m: m["price"])
+    sides = sorted(side_items, key=lambda m: m["price"])
+    main = mains[0] if mains else (priced[0] if priced else None)
+    side = sides[0] if sides else None
+    combo = [m for m in (main, side) if m]
+    combo_cash = round(sum(m["price"] for m in combo), 2)
+
+    # ② 会员卡包券
+    wallet = coupons.get("count", 0)
+    wallet_samples = coupons.get("samples", [])
+
+    # ③ 积分兑换食品券替换套餐单品（仅当真省钱才给方案）
+    redeem_plan = None
+    if combo:
+        for item in combo:
+            hit = next((f for f in mall_food
+                        if item["name"] in f["name"] or f["name"] in item["name"]), None)
+            if hit and hit["point"] <= balance:
+                cash_saved = round(item["price"] - hit["price"], 2)
+                if cash_saved > 0:
+                    redeem_plan = {
+                        "replace_item": item["name"],
+                        "with_coupon": hit["name"],
+                        "cost_points": hit["point"],
+                        "cash_topup": hit["price"],
+                        "cash_saved": cash_saved,
+                    }
+                    break
+        if not redeem_plan and mall_food:
+            ok = [f for f in mall_food if f["point"] > 0 and f["point"] <= balance]
+            ok.sort(key=lambda f: (f["price"] / f["point"]) if f["point"] else 0, reverse=True)
+            if ok:
+                f = ok[0]
+                priciest = max(combo, key=lambda m: m["price"])
+                est_saved = round(priciest["price"] - f["price"], 2)
+                if est_saved > 0:
+                    redeem_plan = {
+                        "replace_item": priciest["name"],
+                        "with_coupon": f["name"],
+                        "cost_points": f["point"],
+                        "cash_topup": f["price"],
+                        "cash_saved": est_saved,
+                    }
+
+    # ④ 本月过期积分急救
+    expire_tip = ""
+    if expire_soon > 0:
+        low = [f for f in mall_food if f["point"] > 0 and f["point"] <= expire_soon]
+        low.sort(key=lambda f: f["point"])
+        if low:
+            expire_tip = "本月 %.1f 积分将过期 → 立即兑换「%s」(%.0f 积分)" % (
+                expire_soon, low[0]["name"], low[0]["point"])
+        else:
+            expire_tip = "本月 %.1f 积分将过期，但不足以兑换任何商品，下单攒更多积分再换" % expire_soon
+
+    net = combo_cash
+    if redeem_plan and isinstance(redeem_plan["cash_saved"], (int, float)):
+        net = round(combo_cash - redeem_plan["cash_saved"], 2)
+    saved = round(combo_cash - net, 2)
+
+    return {
+        "combo": [m["name"] for m in combo],
+        "combo_cash": combo_cash,
+        "member_wallet_coupons": wallet,
+        "wallet_samples": wallet_samples,
+        "points_redeem_plan": redeem_plan,
+        "expire_rescue": expire_tip,
+        "member_effective_price": net,
+        "member_saved": saved,
+        "verdict": ("会员身份让这套餐实际到手 ¥%.2f（省 ¥%.2f）：卡包券叠加 + 积分券替换单品"
+                    % (net, saved)) if saved > 0 else "先用积分把过期分救回来，再谈省钱",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +385,82 @@ def _parse_meals(text):
             price = 0.0
         out.append({"code": code, "name": name, "price": price})
     return out
+
+
+def _parse_my_account(text):
+    """query-my-account -> 积分账户。返回可用积分 / 本月过期积分等。"""
+    obj = _extract_json(text)
+    if not obj:
+        return None
+    d = obj.get("data")
+    if isinstance(d, str):
+        try:
+            d = json.loads(d)
+        except Exception:
+            return None
+    if not isinstance(d, dict):
+        return None
+    def f(k):
+        try:
+            return float(d.get(k, 0) or 0)
+        except Exception:
+            return 0.0
+    return {
+        "available": f("availablePoint"),
+        "accumulative": f("accumulativePoint"),
+        "expire_this_month": f("currentMouthExpirePoint"),
+        "expired": f("expiredPoint"),
+        "currency": d.get("currency", "积分"),
+    }
+
+
+def _parse_mall_products(text):
+    """mall-points-products -> 积分商城商品列表。含 point(积分)/price(金额)/status。"""
+    obj = _extract_json(text)
+    if not obj:
+        return []
+    data = obj.get("data")
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for x in data:
+        if not isinstance(x, dict):
+            continue
+        def num(k):
+            try:
+                return float(x.get(k) or 0)
+            except Exception:
+                return 0.0
+        out.append({
+            "name": x.get("spuName", ""),
+            "spu_id": x.get("spuId"),
+            "point": num("point"),
+            "price": num("price"),
+            "cat": x.get("catName", ""),
+            "status": x.get("status"),
+            "selling": x.get("selling", ""),
+        })
+    return out
+
+
+def _parse_my_coupons(text):
+    """query-my-coupons -> 会员卡包券。轻量解析：返回数量与样例名。"""
+    obj = _extract_json(text)
+    names, count = [], 0
+    if obj:
+        # 常见字段：couponName / couponTitle / name
+        raw = json.dumps(obj, ensure_ascii=False)
+        import re as _re
+        names = list(dict.fromkeys(_re.findall(r'"(?:couponName|couponTitle|name)"\s*:\s*"([^"]{1,40})"', raw)))[:5]
+        # 用 couponId / couponCode 出现次数估算张数（每张含一个唯一 id）
+        ids = _re.findall(r'"(?:couponId|couponCode|id)"\s*:\s*"?(\d{4,})', raw)
+        count = len(set(ids)) if ids else (len(names) or 0)
+    return {"count": count, "samples": names}
 
 
 def _tool_text(client, name, args):
@@ -334,6 +552,7 @@ def run_live(token):
         "省钱 saver": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons", "query-my-coupons"],
         "控卡 macro": ["list-nutrition-foods", "query-meals", "calculate-price"],
         "积分 points": ["query-my-account", "mall-points-products", "mall-product-detail"],
+        "会员 member": ["query-my-account", "query-my-coupons", "mall-points-products", "query-meals"],
         "活动 activity": ["campaign-calendar", "query-party-city", "query-party-store", "party-order-create"],
         "盲盒 surprise": ["query-meals", "calculate-price"],
     }
@@ -354,7 +573,7 @@ def run_live(token):
         print("  ⚠️ 真实数据解析为空，改用内置样本演示。")
         items = MENU
 
-    print("\n========== 真实数据驱动的三模式 ==========")
+    print("\n========== 真实数据驱动的四模式 ==========")
     price_items = [i for i in items if i["price"] is not None]
     macro_items = [i for i in items if i["energy"] is not None and i["protein"] is not None]
     print(f"（省钱/盲盒用 {len(price_items)} 个真实价格餐品；控卡用 {len(macro_items)} 个真实营养餐品）")
@@ -364,6 +583,31 @@ def run_live(token):
     print(json.dumps(mode_macro(600, 30, items=macro_items), ensure_ascii=False, indent=2))
     print("\n[真实·盲盒] 预算 30 元：")
     print(json.dumps(mode_surprise(30, items=price_items), ensure_ascii=False, indent=2))
+
+    # ---- 积分模式：真实账户 + 真实积分商城 ----
+    print("\n>>> 拉取真实积分账户与积分商城（query-my-account + mall-points-products）...")
+    acc_txt, _ = _tool_text(c, "query-my-account", {})
+    mall_txt, _ = _tool_text(c, "mall-points-products", {"catRuleIds": "1>4"})
+    account = _parse_my_account(acc_txt)
+    mall_products = _parse_mall_products(mall_txt)
+    balance = account["available"] if account else 0.0
+    expire_soon = account["expire_this_month"] if account else 0.0
+    if account:
+        print(f"  积分账户：可用 {balance} {account['currency']}｜本月将过期 {expire_soon}")
+    print(f"  积分商城（食品券类目）商品 {len(mall_products)} 个")
+    print("\n[真实·积分] 最值兑换：")
+    print(json.dumps(mode_points(balance=balance, products=mall_products, expire_soon=expire_soon, meals=price_items),
+                     ensure_ascii=False, indent=2))
+
+    # ---- 会员卡 × 套餐 联动模式 ----
+    print("\n>>> 拉取会员卡包券（query-my-coupons）...")
+    coup_txt, _ = _tool_text(c, "query-my-coupons", {})
+    coupons = _parse_my_coupons(coup_txt)
+    print(f"  卡包券 {coupons['count']} 张，示例：{coupons['samples']}")
+    print("\n[真实·会员卡×套餐] 联动省钱：")
+    print(json.dumps(mode_member(balance=balance, expire_soon=expire_soon, meals=price_items,
+                                 coupons=coupons, mall_food=mall_products),
+                     ensure_ascii=False, indent=2))
 
     # 活动模式：真实 campaign-calendar 抽样
     print("\n[真实·活动] 当前营销活动（campaign-calendar）：")
@@ -375,7 +619,7 @@ def run_live(token):
 
 def main():
     ap = argparse.ArgumentParser(description="麦麦精算师：离线演示 + 真实MCP接入")
-    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise"], default="saver")
+    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member"], default="saver")
     ap.add_argument("--budget", type=float, default=50.0)
     ap.add_argument("--kcal", type=float, default=600.0)
     ap.add_argument("--protein", type=float, default=30.0)
@@ -397,8 +641,10 @@ def main():
         print(json.dumps(mode_saver(50), ensure_ascii=False, indent=2))
         print("\n=== [控卡] 600kcal/30g蛋白 ===")
         print(json.dumps(mode_macro(600, 30), ensure_ascii=False, indent=2))
-        print("\n=== [积分] 余额3200 ===")
+        print("\n=== [积分] 余额3200（离线样本） ===")
         print(json.dumps(mode_points(3200), ensure_ascii=False, indent=2))
+        print("\n=== [会员卡×套餐] 联动（离线样本） ===")
+        print(json.dumps(mode_member(), ensure_ascii=False, indent=2))
         print("\n=== [活动] 2026-10-11 起30天 ===")
         print(json.dumps(mode_activity(args.today, args.horizon), ensure_ascii=False, indent=2))
         print("\n=== [盲盒] 预算30 ===")
@@ -413,6 +659,8 @@ def main():
         out = mode_points(args.balance)
     elif args.mode == "activity":
         out = mode_activity(args.today, args.horizon)
+    elif args.mode == "member":
+        out = mode_member()
     else:
         out = mode_surprise(args.budget, args.avoid)
     print(json.dumps(out, ensure_ascii=False, indent=2))
