@@ -26,7 +26,28 @@ import urllib.request
 import urllib.error
 
 DEFAULT_BASE = "https://mcp.mcd.cn"
-DEFAULT_PROXY = "http://127.0.0.1:65182"   # 本机出网代理（无网环境可改/留空）
+def _detect_proxy():
+    """自动探测可用出网代理：优先环境变量，其次本机常用端口。
+    ⚠️ 本机代理端口会随会话变化（曾 65182 → 60182），写死会导致连接被拒。"""
+    for k in ("MCD_PROXY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        v = os.environ.get(k)
+        if v:
+            return v
+    import socket
+    for p in (60182, 65182, 60149, 7890, 10809):
+        s = socket.socket()
+        s.settimeout(0.4)
+        try:
+            s.connect(("127.0.0.1", p))
+            return f"http://127.0.0.1:{p}"
+        except OSError:
+            pass
+        finally:
+            s.close()
+    return None
+
+
+DEFAULT_PROXY = _detect_proxy()            # 本机出网代理（自动探测，无网环境可留空）
 
 
 class McpClient:
