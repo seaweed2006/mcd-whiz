@@ -13,3 +13,6 @@ fixtures/real_snapshot.json
 __pycache__/
 *.pyc
 *.pyo
+
+# 录屏助手导出的分屏文本（本地提词器用，不进仓库）
+demo_out*/
