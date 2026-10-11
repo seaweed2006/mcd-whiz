@@ -35,6 +35,9 @@ MENU = [
     {"code": "P10", "name": "可乐(中)", "price": 10.0, "energy": 144, "protein": 0, "fat": 0, "carb": 36},
     {"code": "P11", "name": "麦旋风(奥利奥)", "price": 15.0, "energy": 320, "protein": 6, "fat": 12, "carb": 48},
     {"code": "P12", "name": "鲜煮咖啡", "price": 14.0, "energy": 5, "protein": 0, "fat": 0, "carb": 0},
+    {"code": "P13", "name": "麦香鱼", "price": 22.0, "energy": 350, "protein": 16, "fat": 17, "carb": 35},
+    {"code": "P14", "name": "圆筒冰淇淋", "price": 8.0, "energy": 150, "protein": 3, "fat": 5, "carb": 24},
+    {"code": "P15", "name": "皮蛋瘦肉粥", "price": 12.0, "energy": 130, "protein": 7, "fat": 4, "carb": 18},
 ]
 
 # 样本优惠券：满减
@@ -235,6 +238,14 @@ DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "旋", 
 SIDE_KW = ["薯条", "鸡翅", "鸡块", "鸡米", "玉米", "派", "麦乐", "nugget", "杯", "圆筒", "旋风", "圣代"]
 MAIN_KW = ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷", "肉", "鱼", "猪"]
 
+# 银发适老 / 软糯 关键词：偏好"天然软质、易消化、低刺激"单品；避开 辣/脆/炸/骨/派 等硬韧刺激物
+ELDER_SOFT_KW = ["粥", "玉米", "苹果", "圆筒", "圣代", "旋风", "鱼", "吉士", "板烧", "蒸", "燕麦", "豆浆", "奶", "汤"]
+ELDER_AVOID_KW = ["辣", "椒", "脆", "炸", "骨", "派", "坚果", "香菜", "葱", "冰", "酒"]
+
+# 好兄弟蛋白质活动 关键词：偏好"高蛋白、高能量"的堡/翅/块；避开 沙拉/粥/素 等低蛋白项
+BROS_KW = ["堡", "腿", "牛", "鸡", "虾", "排", "翅", "块", "肉", "鱼", "双层", "巨无霸", "麦辣"]
+BROS_AVOID_KW = ["沙拉", "苹果", "玉米", "粥", "蔬菜", "素"]
+
 
 def _is_excluded(n):
     return any(k in n for k in SAUCE_KW + DRINK_KW)
@@ -335,6 +346,150 @@ def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
         "verdict": ("%d 人「%s」分享篮：共 %d 件，原价 ¥%.2f，用券后 ¥%.2f（省 ¥%.2f），人均 ¥%.2f"
                     % (people, "亲子" if scenario == "family" else "闺蜜", len(basket),
                        cash, pay, saved, pay / people)),
+    }
+
+
+def mode_elderly(budget, items=None, coupons=None, companion=False):
+    """银发适老 / 软糯模式：为牙口不好的老人挑「天然软糯、易消化、低刺激」的麦当劳单品。
+    麦当劳中国无专属老年菜单（研究证实），故从菜单中筛选天然软质单品：
+      主食偏 蒸/烤/嫩（麦香鱼、板烧鸡腿堡、吉士汉堡），避开 辣/脆/炸/骨/派；
+      饮料偏温热（豆浆/热饮），甜品偏软（圆筒/麦旋风/玉米杯/苹果片）。
+    若 companion=True（年轻人带老人），额外加一份年轻人的常规高蛋白主食共享。
+    返回老人的软食篮 + 营养 + 提示；严重吞咽障碍者建议改选专业软餐（IDDSI 分级）。"""
+    if items is None:
+        items = MENU
+    if coupons is None:
+        coupons = COUPONS
+    priced = [m for m in items if m.get("price") is not None and m["price"] > 0]
+    if not priced:
+        return {"verdict": "无可用餐品数据，请先拉取真实菜单"}
+    soft = [m for m in priced if any(k in m["name"] for k in ELDER_SOFT_KW)
+            and not any(k in m["name"] for k in ELDER_AVOID_KW)]
+    if not soft:
+        return {"verdict": "当前菜单未找到明确的软质单品，建议现场请店员去骨/去辣或选粥类"}
+    mains = sorted([m for m in soft if any(k in m["name"] for k in MAIN_KW)],
+                   key=lambda m: -(m.get("protein") or 0))
+    drinks = [m for m in soft if any(k in m["name"] for k in DRINK_KW)]
+    snacks = [m for m in soft if m not in mains and m not in drinks]
+    snacks.sort(key=lambda m: m["price"])
+
+    basket = []
+    used = set()
+
+    def add(pool, n):
+        cnt = 0
+        for m in pool:
+            if cnt >= n:
+                break
+            if m["name"] in used:
+                continue
+            if _combo_price(basket) + m["price"] <= budget:
+                basket.append(m)
+                used.add(m["name"])
+                cnt += 1
+        return cnt
+
+    add(mains, 1)
+    add(drinks, 1)
+    add(snacks, 1)
+    if companion:
+        young = [m for m in priced if m not in soft and any(k in m["name"] for k in MAIN_KW)]
+        young.sort(key=lambda m: -(m.get("protein") or 0))
+        add(young, 1)
+
+    cash = _combo_price(basket)
+    coupon = _best_coupon(cash, coupons) if coupons else None
+    minus = coupon["minus"] if coupon else 0.0
+    pay = round(cash - minus, 2)
+    saved = round(cash - pay, 2)
+    prot = round(sum(m.get("protein") or 0 for m in basket), 1)
+    kcal = round(sum(m.get("energy") or 0 for m in basket), 1)
+    return {
+        "scenario": "老人 + 年轻人同行" if companion else "老人单独",
+        "basket": [m["name"] for m in basket],
+        "soft_items": [m["name"] for m in basket if m in soft],
+        "hard_items_for_young": [m["name"] for m in basket if m not in soft],
+        "cash": cash,
+        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
+        "pay": pay,
+        "saved": saved,
+        "total_protein_g": prot,
+        "total_kcal": kcal,
+        "tips": [
+            "麦当劳中国无专属老年菜单，以上为天然软质单品（蒸/烤/嫩、无骨无辣）",
+            "老人宜温热：饮料选豆浆/热饮，避开冰镇可乐；要求店员「去骨/去辣/不强韧」",
+            "软糯推荐：麦香鱼(蒸面包+嫩鱼)、板烧鸡腿堡、玉米杯、苹果片、圆筒冰淇淋都较易咀嚼",
+            "⚠️ 严重吞咽障碍（呛咳风险）者，麦当劳不作适老餐，请选专业软餐（IDDSI 分级 / 软餐专送）",
+        ],
+        "verdict": ("为老人搭配软糯篮：%s，原价 ¥%.2f，用券后 ¥%.2f（省 ¥%.2f），共 %.0f kcal / %.0fg 蛋白"
+                    % ("、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot)),
+    }
+
+
+def mode_bros(budget, people=2, items=None, coupons=None):
+    """好兄弟蛋白质活动：2 个男生的专属高蛋白高能量组合。
+    每人一份高蛋白主食（双层/牛堡/鸡腿堡/麦香鱼），共享一份蛋白质小吃（鸡翅/鸡块），各配一杯饮料；
+    报告合计蛋白/热量并叠加满减券；对应「练后/加班补充蛋白」的兄弟局。"""
+    if people < 1:
+        people = 1
+    if items is None:
+        items = MENU
+    if coupons is None:
+        coupons = COUPONS
+    priced = [m for m in items if m.get("price") is not None and m["price"] > 0]
+    if not priced:
+        return {"verdict": "无可用餐品数据，请先拉取真实菜单"}
+    hard = [m for m in priced if any(k in m["name"] for k in BROS_KW)
+            and not any(k in m["name"] for k in BROS_AVOID_KW)]
+    mains = sorted([m for m in hard if any(k in m["name"] for k in MAIN_KW)],
+                   key=lambda m: -(m.get("protein") or 0))
+    sides = sorted([m for m in hard if any(k in m["name"] for k in SIDE_KW)],
+                   key=lambda m: -(m.get("protein") or 0))
+    drinks = [m for m in priced if any(k in m["name"] for k in DRINK_KW)]
+    drinks.sort(key=lambda m: m["price"])
+
+    basket = []
+    used = set()
+
+    def add(pool, n):
+        cnt = 0
+        for m in pool:
+            if cnt >= n:
+                break
+            if m["name"] in used:
+                continue
+            if _combo_price(basket) + m["price"] <= budget:
+                basket.append(m)
+                used.add(m["name"])
+                cnt += 1
+        return cnt
+
+    add(mains, people)
+    add(sides, 1)
+    add(drinks, people)
+    if len([m for m in basket if any(k in m["name"] for k in MAIN_KW)]) < people:
+        add(mains, people)
+
+    cash = _combo_price(basket)
+    coupon = _best_coupon(cash, coupons) if coupons else None
+    minus = coupon["minus"] if coupon else 0.0
+    pay = round(cash - minus, 2)
+    saved = round(cash - pay, 2)
+    prot = round(sum(m.get("protein") or 0 for m in basket), 1)
+    kcal = round(sum(m.get("energy") or 0 for m in basket), 1)
+    return {
+        "scenario": "好兄弟蛋白质活动（%d 男）" % people,
+        "basket": [m["name"] for m in basket],
+        "cash": cash,
+        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
+        "pay": pay,
+        "saved": saved,
+        "total_protein_g": prot,
+        "total_kcal": kcal,
+        "per_person_protein_g": round(prot / people, 1),
+        "tips": "练后/加班补蛋白：每人一份高蛋白堡 + 共享鸡翅鸡块；饮水选蛋白友好的豆浆/牛奶",
+        "verdict": ("%d 个男生的蛋白质局：%s，原价 ¥%.2f，券后 ¥%.2f（省 ¥%.2f），合计 %.0f kcal / %.0fg 蛋白（人均 %.1fg）"
+                    % (people, "、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot, prot / people)),
     }
 
 
@@ -711,7 +866,7 @@ def fetch_real_items(client):
 
 
 def run_live(token):
-    """连接真实麦当劳 MCP：握手、列工具、校验七模式工具，并用真实数据跑省钱/控卡/盲盒/亲子闺蜜。"""
+    """连接真实麦当劳 MCP：握手、列工具、校验九模式工具，并用真实数据跑省钱/控卡/盲盒/亲子闺蜜/银发/好兄弟。"""
     try:
         from mcp_client import McpClient
     except ImportError:
@@ -732,7 +887,7 @@ def run_live(token):
     if len(names) > 10:
         print(f"   …（共 {len(names)} 个）")
 
-    # 七模式 → 真实工具映射（只校验"工具是否可用"，不触发任何写操作）
+    # 九模式 → 真实工具映射（只校验"工具是否可用"，不触发任何写操作）
     mapping = {
         "省钱 saver": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons", "query-my-coupons"],
         "控卡 macro": ["list-nutrition-foods", "query-meals", "calculate-price"],
@@ -741,8 +896,10 @@ def run_live(token):
         "活动 activity": ["campaign-calendar", "query-party-city", "query-party-store", "party-order-create"],
         "盲盒 surprise": ["query-meals", "calculate-price"],
         "亲子/闺蜜 share": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons"],
+        "银发适老 elderly": ["query-meals", "list-nutrition-foods", "calculate-price"],
+        "好兄弟 bros": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons"],
     }
-    print("\n>>> 七模式所需工具可用性：")
+    print("\n>>> 九模式所需工具可用性：")
     for mode, need in mapping.items():
         ok = [t for t in need if t in names]
         miss = [t for t in need if t not in names]
@@ -759,7 +916,7 @@ def run_live(token):
         print("  ⚠️ 真实数据解析为空，改用内置样本演示。")
         items = MENU
 
-    print("\n========== 真实数据驱动（省钱/控卡/盲盒/积分/会员/活动/亲子闺蜜）==========")
+    print("\n========== 真实数据驱动（省钱/控卡/盲盒/积分/会员/活动/亲子闺蜜/银发/好兄弟）==========")
     price_items = [i for i in items if i["price"] is not None]
     macro_items = [i for i in items if i["energy"] is not None and i["protein"] is not None]
     print(f"（省钱/盲盒用 {len(price_items)} 个真实价格餐品；控卡用 {len(macro_items)} 个真实营养餐品）")
@@ -773,6 +930,12 @@ def run_live(token):
     print(json.dumps(mode_share(60, people=2, scenario="family", items=price_items), ensure_ascii=False, indent=2))
     print("\n[真实·亲子/闺蜜] 2人·闺蜜·预算 60（真实门店价）：")
     print(json.dumps(mode_share(60, people=2, scenario="friends", items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·银发适老·软糯] 预算 40（老人单独，真实门店价）：")
+    print(json.dumps(mode_elderly(40, items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·银发适老·软糯] 预算 60（年轻人带老人同行，真实门店价）：")
+    print(json.dumps(mode_elderly(60, items=price_items, companion=True), ensure_ascii=False, indent=2))
+    print("\n[真实·好兄弟蛋白质活动] 2男·预算 80（真实门店价）：")
+    print(json.dumps(mode_bros(80, people=2, items=price_items), ensure_ascii=False, indent=2))
 
     # ---- 积分模式：真实账户 + 真实积分商城 ----
     print("\n>>> 拉取真实积分账户与积分商城（query-my-account + mall-points-products）...")
@@ -813,14 +976,15 @@ def run_live(token):
 
 def main():
     ap = argparse.ArgumentParser(description="麦麦精算师：离线演示 + 真实MCP接入")
-    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member", "share"], default="saver")
+    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member", "share", "elderly", "bros"], default="saver")
     ap.add_argument("--budget", type=float, default=50.0)
     ap.add_argument("--kcal", type=float, default=600.0)
     ap.add_argument("--protein", type=float, default=30.0)
     ap.add_argument("--balance", type=float, default=3200.0)
     ap.add_argument("--avoid", type=str, default="")
     ap.add_argument("--scenario", choices=["family", "friends"], default="family", help="share 模式：亲子(family) / 闺蜜(friends)")
-    ap.add_argument("--people", type=int, default=2, help="share 模式：人数（默认 2）")
+    ap.add_argument("--people", type=int, default=2, help="share/bros 模式：人数（默认 2）")
+    ap.add_argument("--companion", action="store_true", help="elderly 模式：年轻人带老人同行（额外加一份年轻人常规主食）")
     ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例（离线）")
     ap.add_argument("--today", type=str, default="2026-10-11")
     ap.add_argument("--horizon", type=int, default=30)
@@ -851,6 +1015,12 @@ def main():
         print(json.dumps(mode_share(60, people=2, scenario="family"), ensure_ascii=False, indent=2))
         print("\n=== [亲子/闺蜜] 2人·闺蜜·预算60（离线样本） ===")
         print(json.dumps(mode_share(60, people=2, scenario="friends"), ensure_ascii=False, indent=2))
+        print("\n=== [银发适老·软糯] 预算40（老人单独，离线样本） ===")
+        print(json.dumps(mode_elderly(40, companion=False), ensure_ascii=False, indent=2))
+        print("\n=== [银发适老·软糯] 预算60（年轻人带老人同行，离线样本） ===")
+        print(json.dumps(mode_elderly(60, companion=True), ensure_ascii=False, indent=2))
+        print("\n=== [好兄弟蛋白质活动] 2男·预算80（离线样本） ===")
+        print(json.dumps(mode_bros(80, people=2), ensure_ascii=False, indent=2))
         return
 
     if args.mode == "saver":
@@ -865,6 +1035,10 @@ def main():
         out = mode_member(budget=args.budget)
     elif args.mode == "share":
         out = mode_share(args.budget, people=args.people, scenario=args.scenario)
+    elif args.mode == "elderly":
+        out = mode_elderly(args.budget, companion=args.companion)
+    elif args.mode == "bros":
+        out = mode_bros(args.budget, people=args.people)
     else:
         out = mode_surprise(args.budget, args.avoid)
     print(json.dumps(out, ensure_ascii=False, indent=2))
