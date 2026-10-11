@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-麦麦精算师 (MCD Whiz) —— 离线演示版（无需 MCP Token）
+麦麦精算师 (MCD Whiz)
 ------------------------------------------------------------------
-仅用内置样本数据演示四种决策模式的核心算法：省钱 / 控卡 / 凑积分 / 盲盒。
-接入真实麦当劳 MCP 后，把"样本数据"替换为对应 MCP 工具返回即可（见 MCP_INTEGRATION.md）。
-依赖：Python 3.7+ 标准库，零第三方依赖。
+两种运行模式：
+  · 离线演示（默认）：内置样本数据，演示五种决策模式核心算法。
+  · 真实接入（--live）：连接麦当劳官方 MCP（https://mcp.mcd.cn），
+    用 MCD_MCP_TOKEN 调真实工具。详见 MCP_INTEGRATION.md。
+各模式→真实工具映射见 SKILL.md / README.md。
+依赖：Python 3.7+ 标准库，零第三方依赖（--live 走 mcp_client.py，同为stdlib）。
 """
 import argparse
 import json
+import os
 import random
 import sys
 
@@ -168,18 +172,71 @@ def mode_surprise(budget, avoid=""):
     return {"items": [p["name"] for p in picks], "price": total, "quote": random.choice(lines)}
 
 
+def run_live(token):
+    """连接真实麦当劳 MCP：握手、列出工具、跑只读工具抽样，并打印五种模式的工具映射。"""
+    try:
+        from mcp_client import McpClient
+    except ImportError:
+        print("缺少 mcp_client.py，无法进行真实接入。")
+        sys.exit(1)
+    if not token:
+        print("未提供麦当劳 MCP Token。请设置环境变量 MCD_MCP_TOKEN，或加 --token <你的Token>。")
+        sys.exit(1)
+
+    print(">>> 正在连接麦当劳官方 MCP (https://mcp.mcd.cn) ...\n")
+    c = McpClient(token=token)
+    c.initialize()
+    tools = c.list_tools()
+    names = [t["name"] for t in tools]
+    print(f"✅ 已连接。当前可用工具 {len(names)} 个：")
+    for n in names:
+        print("   -", n)
+
+    # 五种模式 → 真实工具映射（只校验“工具是否可用”，不触发任何写操作）
+    mapping = {
+        "省钱 saver": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons", "query-my-coupons"],
+        "控卡 macro": ["list-nutrition-foods", "query-meals", "calculate-price"],
+        "积分 points": ["query-my-account", "mall-points-products", "mall-product-detail"],
+        "活动 activity": ["campaign-calendar", "query-party-city", "query-party-store", "party-order-create"],
+        "盲盒 surprise": ["query-meals", "calculate-price"],
+    }
+    print("\n>>> 五种模式所需工具可用性：")
+    for mode, need in mapping.items():
+        ok = [t for t in need if t in names]
+        miss = [t for t in need if t not in names]
+        flag = "✅ 全部就绪" if not miss else f"⚠️ 缺 {miss}"
+        print(f"  [{mode}] {flag}")
+
+    # 只读工具真实数据抽样（安全，均为查询类，不会下单/领券）
+    print("\n>>> 只读工具真实数据抽样：")
+    demo = c.safe_demo()
+    for name, s in demo.items():
+        print(f"\n  [{name}]")
+        if "error" in s:
+            print("    错误:", s["error"])
+        else:
+            print("    isError:", s.get("isError"), "| 数据:", (s.get("text") or "")[:260])
+    print("\n--- 真实接入验证完成（未执行任何写操作：下单/领券需用户显式确认）---")
+
+
 def main():
-    ap = argparse.ArgumentParser(description="麦麦精算师 离线演示")
+    ap = argparse.ArgumentParser(description="麦麦精算师：离线演示 + 真实MCP接入")
     ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise"], default="saver")
     ap.add_argument("--budget", type=float, default=50.0)
     ap.add_argument("--kcal", type=float, default=600.0)
     ap.add_argument("--protein", type=float, default=30.0)
     ap.add_argument("--balance", type=float, default=3200.0)
     ap.add_argument("--avoid", type=str, default="")
-    ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例")
+    ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例（离线）")
     ap.add_argument("--today", type=str, default="2026-10-11")
     ap.add_argument("--horizon", type=int, default=30)
+    ap.add_argument("--live", action="store_true", help="连接真实麦当劳 MCP（需 MCD_MCP_TOKEN 或 --token）")
+    ap.add_argument("--token", type=str, default=None, help="麦当劳 MCP Token（也可走环境变量 MCD_MCP_TOKEN）")
     args = ap.parse_args()
+
+    if args.live:
+        run_live(args.token or os.environ.get("MCD_MCP_TOKEN", ""))
+        return
 
     if args.demo:
         print("=== [省钱] 预算50 ===")
