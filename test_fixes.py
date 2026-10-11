@@ -12,6 +12,7 @@
 零依赖，仅用标准库 unittest。
 """
 import datetime
+import json
 import unittest
 
 import mcd_whiz as M
@@ -138,6 +139,143 @@ class TestShareCounts(unittest.TestCase):
         self.assertEqual(total, len(out["basket"]), "分类计数加总必须等于实际件数")
 
 
+class TestRound2HonestReplay(unittest.TestCase):
+    """🔴 第二轮-必修1：--demo-real 不得"零虚构"，缺失段必须如实标注占位"""
+
+    def test_coupons_parsed_from_official_markdown(self):
+        """官方 query-my-coupons 返回的是 Markdown，必须真解析出 13 张，不能是 0"""
+        md = ("# 您的优惠券列表\n\n共 13 张可用优惠券 | 第 1/1 页\n\n"
+              "## 中薯条买一送一\n- **优惠**: ¥13.5 (用券价格)\n- **标签**: 到店专用\n")
+        r = M._parse_my_coupons(md)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["count"], 13)
+        self.assertEqual(r["items"][0]["name"], "中薯条买一送一")
+        self.assertAlmostEqual(r["items"][0]["value"], 13.5)
+
+    def test_coupons_unparseable_is_minus_one_not_zero(self):
+        """解析失败必须返回 -1 + 原因，不能静默变成"你卡包里 0 张券" """
+        r = M._parse_my_coupons("这不是券列表，只是一段乱码")
+        self.assertEqual(r["count"], -1)
+        self.assertFalse(r["ok"])
+        self.assertIn("解析失败", r["parse_note"])
+
+    def test_member_wallet_none_when_count_unknown(self):
+        """券数未知时 member 模式输出 None + 说明，而不是 0 张"""
+        out = M.mode_member(budget=30, coupons={"count": -1, "samples": [], "parse_note": "解析失败"})
+        self.assertIsNone(out["member_wallet_coupons"])
+        self.assertIn("未知", out["wallet_note"])
+
+    def test_snapshot_split_public_private(self):
+        """快照必须按隐私拆分：private 段不随仓库公开"""
+        import os
+        d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+        self.assertTrue(os.path.isfile(os.path.join(d, "real_snapshot_public.json")),
+                        "公开快照应随仓库提交，评委才能复现")
+        pub = json.load(open(os.path.join(d, "real_snapshot_public.json"), encoding="utf-8"))
+        for k in ("my_account", "my_coupons"):
+            self.assertNotIn(k, pub, "公开快照不得包含个人账户/卡包券")
+        gi = open(os.path.join(os.path.dirname(d), ".gitignore"), encoding="utf-8").read()
+        self.assertIn("real_snapshot_private.json", gi, "私有快照必须被 .gitignore 忽略")
+
+    def test_load_snapshot_returns_three_values(self):
+        snap, path, merged = M.load_snapshot()
+        self.assertIsInstance(snap, dict)
+        self.assertIsInstance(path, str)
+        self.assertIsInstance(merged, bool)
+
+
+class TestRound2Parsers(unittest.TestCase):
+    """🟡 第二轮-中：解析器健壮性（截断 / 数组 / 名称匹配）"""
+
+    def test_extract_json_array_branch(self):
+        self.assertEqual(M._extract_json('noise [{"a": 1}, {"a": 2}] noise'), [{"a": 1}, {"a": 2}])
+
+    def test_truncated_array_salvage(self):
+        txt = 'xx ## Original Response {"data": [{"spuName":"A","point":"100"},{"spuName":"B","po'
+        arr, note = M._loads_truncated_array(txt)
+        self.assertIsInstance(arr, list)
+        self.assertEqual(len(arr), 1, "应抢救出 1 条完整记录")
+        self.assertIn("截断", note)
+
+    def test_mall_products_ex_reports_note(self):
+        products, note = M._parse_mall_products_ex("")
+        self.assertEqual(products, [])
+        self.assertIn("无原文", note)
+
+    def test_combo_not_fuzzy_matched(self):
+        """套餐/三件套禁止模糊匹配营养（会把三件套错配成单个汉堡的营养）"""
+        nutri = {"巨无霸": {"name": "巨无霸", "energy_kcal": 563, "protein": 28,
+                            "fat": 30, "carb": 43, "sodium": 1040}}
+        by_norm = {M._norm_name("巨无霸"): nutri["巨无霸"]}
+        n, how = M._match_nutrition("巨无霸三件套", nutri, by_norm)
+        self.assertIsNone(n)
+        self.assertEqual(how, "skip_combo")
+
+    def test_fuzzy_match_recovers_normalized_name(self):
+        nutri = {"板烧鸡腿堡": {"name": "板烧鸡腿堡", "energy_kcal": 508, "protein": 28,
+                                "fat": 21, "carb": 49, "sodium": 1050}}
+        by_norm = {M._norm_name("板烧鸡腿堡"): nutri["板烧鸡腿堡"]}
+        n, how = M._match_nutrition("板烧鸡腿堡辣味版", nutri, by_norm)
+        self.assertIsNotNone(n, "归一化仍不相等时应退到包含匹配，真实数据里这种写法很常见")
+        self.assertEqual(how, "fuzzy")
+
+
+class TestRound2PointsHonesty(unittest.TestCase):
+    """🔴 第二轮：积分估值不得靠名义价值凑数"""
+
+    def test_one_point_activity_gets_no_nominal_value(self):
+        """1 积分的"应援资格"活动不能被算成 ¥3（会把 vpp 抬到 300/百积分）"""
+        v, src = M._mall_value({"name": "为随心配五大巨星应援1积分兑换活动", "point": 1, "price": 0}, {})
+        self.assertIsNone(v)
+        self.assertIn("无法估算", src)
+
+    def test_coupon_with_embedded_price_deducts_it(self):
+        """券名自带到手价时，价值 = 菜单价 − 到手价"""
+        v, src = M._mall_value({"name": "18.8元麦辣鸡腿汉堡两件套", "point": 50, "price": 0},
+                               {"麦辣鸡腿汉堡": 22.5})
+        self.assertAlmostEqual(v, 3.7, places=2)
+        self.assertIn("到手价", src)
+
+    def test_points_mode_reports_unvalued(self):
+        out = M.mode_points(balance=3000, products=[
+            {"name": "1积分兑换活动", "point": 1, "price": 0, "status": 2},
+            {"name": "板烧鸡腿堡兑换券", "point": 2100, "price": 15.0, "status": 2},
+        ], meals=[{"name": "板烧鸡腿堡", "price": 21.0}])
+        self.assertEqual(out["best_value_overall"]["name"], "板烧鸡腿堡兑换券")
+        self.assertEqual(out["unvalued_count"], 1)
+        self.assertIn("不按名义价值凑数", out["value_note"])
+
+    def test_redeem_plan_deducts_embedded_topup(self):
+        """商城 price=0 但券名写"18.8元"时，必须按 18.8 计为现金支出，不能当白拿"""
+        plan = M._member_redeem_plan(
+            [{"name": "麦辣鸡腿汉堡", "price": 22.5}], balance=9999,
+            mall_food=[{"name": "18.8元麦辣鸡腿汉堡两件套", "point": 50, "price": 0}], vpp=0.047)
+        self.assertIsNotNone(plan)
+        self.assertAlmostEqual(plan["cash_topup"], 18.8, places=2)
+        self.assertIn("券名解析", plan["cash_topup_source"])
+        self.assertAlmostEqual(plan["net_saved"], round(22.5 - 18.8 - 50 * 0.047, 2), places=2)
+
+
+class TestRound2Robustness(unittest.TestCase):
+    """🟠 第二轮-必修2：单个工具/阶段挂掉不能让整个流程崩"""
+
+    def test_tool_text_swallows_exception(self):
+        class Boom:
+            def call_tool(self, name, args):
+                raise RuntimeError("网络不通")
+        txt, err = M._tool_text(Boom(), "query-meals", {})
+        self.assertEqual(txt, "")
+        self.assertIn("EXCEPTION", str(err))
+
+    def test_low_sodium_near_limit_not_claimed_safe(self):
+        """795mg 贴 800mg 线时不能宣告"适合控钠人群" """
+        items = [{"name": "麦香鱼", "price": 20.0, "energy": 350, "protein": 16, "sodium": 795}]
+        out = M.mode_elderly(60, items=items, low_sodium=True)
+        joined = " ".join(out["tips"])
+        self.assertIn("贴线", joined)
+        self.assertNotIn("适合控钠人群", joined)
+
+
 if __name__ == "__main__":
-    print("运行回归测试：验证外部代码审查提出的 7 类问题是否修复\n")
+    print("运行回归测试：验证两轮外部代码审查提出的问题是否修复\n")
     unittest.main(verbosity=2)
