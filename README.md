@@ -4,7 +4,11 @@
 > 把"今天吃什么麦当劳"变成一道可计算的题：省钱 / 控卡 / 凑积分 / 会员卡×套餐 / 盲盒 / 亲子闺蜜共享 / 银发适老 / 好兄弟蛋白质，一套搞定。
 > **2026 麦当劳程序员创意开发大赛（M-CODE）参赛作品。**
 
-**🎯 参赛一屏速览**：`python mcd_whiz.py --demo`（零依赖离线可跑）｜`python mcd_whiz.py --live`（真实麦当劳 MCP 数据实跑）｜视觉展示页：[`showcase.html`](showcase.html)
+**🎯 参赛一屏速览**：`python mcd_whiz.py --demo`（零依赖离线可跑）｜**`python mcd_whiz.py --demo-real`（真实 MCP 数据离线回放，无需 Token）**｜`python mcd_whiz.py --live`（有 Token 时直连真实 MCP）｜视觉展示页：[`showcase.html`](showcase.html)
+
+> **🔍 评委如何验证"真的接了麦当劳 MCP"？** 没有 Token 也能验：本仓库附带一次真实调用的**数据快照**
+> （`fixtures/real_snapshot.json`，含门店、35 个工具、251 件真实餐品与营养数据）。
+> 任何人执行 `python mcd_whiz.py --demo-real`，即可**离线用真实数据跑完全部九模式**，并打印数据出处与抓取时间。
 
 **一个 Skill 编排 35 个官方 MCP 工具 → 9 种决策模式**（覆盖官方三大方向：套餐定制 / 省钱 / 活动推荐）。已接真实数据、全程只读、支付由用户完成。
 
