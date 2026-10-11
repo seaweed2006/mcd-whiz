@@ -36,9 +36,22 @@ python mcd_whiz.py --mode macro --kcal 600 --protein 30
 python mcd_whiz.py --mode points --balance 3200
 ```
 
-### 2. 接入真实麦当劳 MCP
-见 [MCP_INTEGRATION.md](./MCP_INTEGRATION.md)。在 WorkBuddy / Cherry Studio / Cursor / Trae / VSCode 中
-配置 `mcp.mcd.cn` + 你的 Token 后即可让 Agent 调用真实菜单、券与积分。
+### 2. 接入真实麦当劳 MCP（验证连接 + 只读抽样）
+先复制 `.env.example` 为 `.env` 填入你的 Token（`.env` 已被 `.gitignore` 忽略，不会泄露）：
+```bash
+cp .env.example .env        # 然后编辑 .env 填入 MCD_MCP_TOKEN
+python mcd_whiz.py --live   # 连接 mcp.mcd.cn：握手 → 列工具 → 跑只读工具抽样
+```
+`--live` 会做三件事：①与官方 MCP 握手并列出全部工具；②校验五种模式所需工具是否就绪；
+③对一批**只读工具**（时间、营养、活动日历、账户、积分商城）抽样真实数据。
+**全程不执行任何写操作（不下单、不领券），安全可反复运行。**
+
+也可以直接传 Token（不写文件）：
+```bash
+python mcd_whiz.py --live --token "你的麦当劳MCP_Token"
+```
+在 WorkBuddy / Cherry Studio / Cursor / Trae / VSCode 中配置 `mcp.mcd.cn` + 你的 Token，
+即可让 Agent 调用真实菜单、券与积分（详见 [MCP_INTEGRATION.md](./MCP_INTEGRATION.md)）。
 
 ### 3. 作为 WorkBuddy Skill 使用
 把本仓库放到 WorkBuddy 的 Skills 目录（`~/.workbuddy/skills/mcd-whiz` 或项目级 `skills/`），
@@ -48,9 +61,12 @@ SKILL.md 会被自动识别。
 ```
 mcd-whiz/
 ├── SKILL.md              # Skill 定义（Agent 行为 + 安全合规）
-├── mcd_whiz.py           # 离线演示脚本（零依赖）
-├── MCP_INTEGRATION.md    # 麦当劳 MCP 接入说明
+├── mcd_whiz.py           # 离线演示 + 真实MCP接入入口（零依赖）
+├── mcp_client.py         # 麦当劳官方 MCP 客户端（Streamable HTTP，零依赖）
+├── MCP_INTEGRATION.md    # 麦当劳 MCP 接入说明（端点/工具映射/单位坑）
 ├── CONTEST.md            # 参赛声明 / 报名信息
+├── .env.example          # Token 配置样例（复制为 .env 使用）
+├── .gitignore            # 忽略 .env 等密钥，防泄露
 └── README.md             # 本文件
 ```
 
