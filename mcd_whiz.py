@@ -23,21 +23,21 @@ import sys
 # price 单位：元；energy 单位：kcal；protein/fat/carb 单位：g
 # ---------------------------------------------------------------------------
 MENU = [
-    {"code": "P01", "name": "板烧鸡腿堡", "price": 21.0, "energy": 508, "protein": 28, "fat": 21, "carb": 49},
-    {"code": "P02", "name": "巨无霸", "price": 24.0, "energy": 563, "protein": 28, "fat": 30, "carb": 43},
-    {"code": "P03", "name": "麦辣鸡腿堡", "price": 22.0, "energy": 519, "protein": 26, "fat": 26, "carb": 45},
-    {"code": "P04", "name": "吉士汉堡", "price": 13.0, "energy": 312, "protein": 16, "fat": 14, "carb": 31},
-    {"code": "P05", "name": "薯条(中)", "price": 12.0, "energy": 329, "protein": 4, "fat": 16, "carb": 42},
-    {"code": "P06", "name": "麦辣鸡翅(2块)", "price": 18.0, "energy": 350, "protein": 22, "fat": 23, "carb": 12},
-    {"code": "P07", "name": "玉米杯", "price": 10.0, "energy": 115, "protein": 4, "fat": 2, "carb": 23},
-    {"code": "P08", "name": "苹果片", "price": 9.0, "energy": 53, "protein": 0, "fat": 0, "carb": 14},
-    {"code": "P09", "name": "豆浆", "price": 8.0, "energy": 95, "protein": 6, "fat": 3, "carb": 11},
-    {"code": "P10", "name": "可乐(中)", "price": 10.0, "energy": 144, "protein": 0, "fat": 0, "carb": 36},
-    {"code": "P11", "name": "麦旋风(奥利奥)", "price": 15.0, "energy": 320, "protein": 6, "fat": 12, "carb": 48},
-    {"code": "P12", "name": "鲜煮咖啡", "price": 14.0, "energy": 5, "protein": 0, "fat": 0, "carb": 0},
-    {"code": "P13", "name": "麦香鱼", "price": 22.0, "energy": 350, "protein": 16, "fat": 17, "carb": 35},
-    {"code": "P14", "name": "圆筒冰淇淋", "price": 8.0, "energy": 150, "protein": 3, "fat": 5, "carb": 24},
-    {"code": "P15", "name": "皮蛋瘦肉粥", "price": 12.0, "energy": 130, "protein": 7, "fat": 4, "carb": 18},
+    {"code": "P01", "name": "板烧鸡腿堡", "price": 21.0, "energy": 508, "protein": 28, "fat": 21, "carb": 49, "sodium": 1050},
+    {"code": "P02", "name": "巨无霸", "price": 24.0, "energy": 563, "protein": 28, "fat": 30, "carb": 43, "sodium": 1040},
+    {"code": "P03", "name": "麦辣鸡腿堡", "price": 22.0, "energy": 519, "protein": 26, "fat": 26, "carb": 45, "sodium": 980},
+    {"code": "P04", "name": "吉士汉堡", "price": 13.0, "energy": 312, "protein": 16, "fat": 14, "carb": 31, "sodium": 780},
+    {"code": "P05", "name": "薯条(中)", "price": 12.0, "energy": 329, "protein": 4, "fat": 16, "carb": 42, "sodium": 230},
+    {"code": "P06", "name": "麦辣鸡翅(2块)", "price": 18.0, "energy": 350, "protein": 22, "fat": 23, "carb": 12, "sodium": 860},
+    {"code": "P07", "name": "玉米杯", "price": 10.0, "energy": 115, "protein": 4, "fat": 2, "carb": 23, "sodium": 10},
+    {"code": "P08", "name": "苹果片", "price": 9.0, "energy": 53, "protein": 0, "fat": 0, "carb": 14, "sodium": 0},
+    {"code": "P09", "name": "豆浆", "price": 8.0, "energy": 95, "protein": 6, "fat": 3, "carb": 11, "sodium": 15},
+    {"code": "P10", "name": "可乐(中)", "price": 10.0, "energy": 144, "protein": 0, "fat": 0, "carb": 36, "sodium": 10},
+    {"code": "P11", "name": "麦旋风(奥利奥)", "price": 15.0, "energy": 320, "protein": 6, "fat": 12, "carb": 48, "sodium": 150},
+    {"code": "P12", "name": "鲜煮咖啡", "price": 14.0, "energy": 5, "protein": 0, "fat": 0, "carb": 0, "sodium": 5},
+    {"code": "P13", "name": "麦香鱼", "price": 22.0, "energy": 350, "protein": 16, "fat": 17, "carb": 35, "sodium": 790},
+    {"code": "P14", "name": "圆筒冰淇淋", "price": 8.0, "energy": 150, "protein": 3, "fat": 5, "carb": 24, "sodium": 60},
+    {"code": "P15", "name": "皮蛋瘦肉粥", "price": 12.0, "energy": 130, "protein": 7, "fat": 4, "carb": 18, "sodium": 620},
 ]
 
 # 样本优惠券：满减
@@ -349,13 +349,19 @@ def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
     }
 
 
-def mode_elderly(budget, items=None, coupons=None, companion=False):
+# 世界卫生组织建议成人每日钠摄入 < 2000mg；一餐"低钠"参考目标 ≈ 800mg
+LOW_SODIUM_MEAL_MG = 800.0
+
+
+def mode_elderly(budget, items=None, coupons=None, companion=False, low_sodium=False):
     """银发适老 / 软糯模式：为牙口不好的老人挑「天然软糯、易消化、低刺激」的麦当劳单品。
     麦当劳中国无专属老年菜单（研究证实），故从菜单中筛选天然软质单品：
       主食偏 蒸/烤/嫩（麦香鱼、板烧鸡腿堡、吉士汉堡），避开 辣/脆/炸/骨/派；
       饮料偏温热（豆浆/热饮），甜品偏软（圆筒/麦旋风/玉米杯/苹果片）。
+    low_sodium=True 时：在软质单品中优先选「钠数据已知且偏低」者，并报告本餐钠摄入，
+      对照 LOW_SODIUM_MEAL_MG（≈800mg/餐）给超标提示，帮助高血压/肾病老人控钠。
     若 companion=True（年轻人带老人），额外加一份年轻人的常规高蛋白主食共享。
-    返回老人的软食篮 + 营养 + 提示；严重吞咽障碍者建议改选专业软餐（IDDSI 分级）。"""
+    返回老人的软食篮 + 营养 + 钠摄入 + 提示；严重吞咽障碍者建议改选专业软餐（IDDSI 分级）。"""
     if items is None:
         items = MENU
     if coupons is None:
@@ -367,11 +373,25 @@ def mode_elderly(budget, items=None, coupons=None, companion=False):
             and not any(k in m["name"] for k in ELDER_AVOID_KW)]
     if not soft:
         return {"verdict": "当前菜单未找到明确的软质单品，建议现场请店员去骨/去辣或选粥类"}
-    mains = sorted([m for m in soft if any(k in m["name"] for k in MAIN_KW)],
-                   key=lambda m: -(m.get("protein") or 0))
-    drinks = [m for m in soft if any(k in m["name"] for k in DRINK_KW)]
+
+    def sod(m):
+        return m.get("sodium")
+
+    # 低钠排序：有钠数据者优先按钠升序；无数据者排末尾（保守视作偏咸）
+    def sodium_sort(pool):
+        if not low_sodium:
+            return pool
+        return sorted(pool, key=lambda m: ((0, sod(m)) if sod(m) is not None else (1, 0)))
+
+    mains = [m for m in soft if any(k in m["name"] for k in MAIN_KW)]
+    mains = sodium_sort(mains)
+    if not low_sodium:  # 非低钠时仍以蛋白高为优先
+        mains = sorted(mains, key=lambda m: -(m.get("protein") or 0))
+    drinks = sodium_sort([m for m in soft if any(k in m["name"] for k in DRINK_KW)])
     snacks = [m for m in soft if m not in mains and m not in drinks]
-    snacks.sort(key=lambda m: m["price"])
+    snacks = sodium_sort(snacks)
+    if not low_sodium:
+        snacks.sort(key=lambda m: m["price"])
 
     basket = []
     used = set()
@@ -404,8 +424,29 @@ def mode_elderly(budget, items=None, coupons=None, companion=False):
     saved = round(cash - pay, 2)
     prot = round(sum(m.get("protein") or 0 for m in basket), 1)
     kcal = round(sum(m.get("energy") or 0 for m in basket), 1)
+    na = [sod(m) for m in basket if sod(m) is not None]
+    total_sodium = round(sum(na), 1) if na else None
+    has_na_data = bool(na)
+
+    tips = [
+        "麦当劳中国无专属老年菜单，以上为天然软质单品（蒸/烤/嫩、无骨无辣）",
+        "老人宜温热：饮料选豆浆/热饮，避开冰镇可乐；要求店员「去骨/去辣/不强韧」",
+        "软糯推荐：麦香鱼(蒸面包+嫩鱼)、板烧鸡腿堡、玉米杯、苹果片、圆筒冰淇淋都较易咀嚼",
+        "⚠️ 严重吞咽障碍（呛咳风险）者，麦当劳不作适老餐，请选专业软餐（IDDSI 分级 / 软餐专送）",
+    ]
+    if low_sodium:
+        tips.insert(0, "已按「低钠优先」挑选：尽量选玉米杯/苹果片/豆浆/鲜煮/粥等低钠单品，避开腌渍与酱料")
+        if total_sodium is not None:
+            if total_sodium <= LOW_SODIUM_MEAL_MG:
+                tips.append("✅ 本餐钠约 %.0fmg（≤%.0fmg 低钠参考线），适合控钠人群" % (total_sodium, LOW_SODIUM_MEAL_MG))
+            else:
+                tips.append("⚠️ 本餐钠约 %.0fmg（>%.0fmg 低钠参考线）：高血压/肾病老人建议减量或换更低钠组合" % (total_sodium, LOW_SODIUM_MEAL_MG))
+        else:
+            tips.append("⚠️ 当前数据缺失钠字段，低钠排序仅按已知项执行；实际以门店营养信息为准")
+
     return {
         "scenario": "老人 + 年轻人同行" if companion else "老人单独",
+        "low_sodium": low_sodium,
         "basket": [m["name"] for m in basket],
         "soft_items": [m["name"] for m in basket if m in soft],
         "hard_items_for_young": [m["name"] for m in basket if m not in soft],
@@ -415,21 +456,21 @@ def mode_elderly(budget, items=None, coupons=None, companion=False):
         "saved": saved,
         "total_protein_g": prot,
         "total_kcal": kcal,
-        "tips": [
-            "麦当劳中国无专属老年菜单，以上为天然软质单品（蒸/烤/嫩、无骨无辣）",
-            "老人宜温热：饮料选豆浆/热饮，避开冰镇可乐；要求店员「去骨/去辣/不强韧」",
-            "软糯推荐：麦香鱼(蒸面包+嫩鱼)、板烧鸡腿堡、玉米杯、苹果片、圆筒冰淇淋都较易咀嚼",
-            "⚠️ 严重吞咽障碍（呛咳风险）者，麦当劳不作适老餐，请选专业软餐（IDDSI 分级 / 软餐专送）",
-        ],
+        "total_sodium_mg": total_sodium,
+        "sodium_data_available": has_na_data,
+        "tips": tips,
         "verdict": ("为老人搭配软糯篮：%s，原价 ¥%.2f，用券后 ¥%.2f（省 ¥%.2f），共 %.0f kcal / %.0fg 蛋白"
-                    % ("、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot)),
+                    % ("、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot))
+                   + ("，钠约 %.0fmg" % total_sodium if total_sodium is not None else ""),
     }
 
 
-def mode_bros(budget, people=2, items=None, coupons=None):
+def mode_bros(budget, people=2, items=None, coupons=None, protein_target=None):
     """好兄弟蛋白质活动：2 个男生的专属高蛋白高能量组合。
     每人一份高蛋白主食（双层/牛堡/鸡腿堡/麦香鱼），共享一份蛋白质小吃（鸡翅/鸡块），各配一杯饮料；
-    报告合计蛋白/热量并叠加满减券；对应「练后/加班补充蛋白」的兄弟局。"""
+    报告合计蛋白/热量并叠加满减券；对应「练后/加班补充蛋白」的兄弟局。
+    protein_target 为「人均蛋白目标(g)」：给定后在预算内枚举组合，尽量凑够 人均×人数 的总蛋白，
+      达标优先、并在达标档里选更便宜的组合；未达标则给最接近的组合并报告缺口。"""
     if people < 1:
         people = 1
     if items is None:
@@ -448,6 +489,69 @@ def mode_bros(budget, people=2, items=None, coupons=None):
     drinks = [m for m in priced if any(k in m["name"] for k in DRINK_KW)]
     drinks.sort(key=lambda m: m["price"])
 
+    # ---- 有目标：在预算内搜"尽量达标、且达标档最便宜"的组合 ----
+    if protein_target is not None and protein_target > 0:
+        goal = protein_target * people
+        cand_mains = mains[:max(people, 4)]
+        cand_sides = sides[:3]
+        cand_drinks = drinks[:max(people, 4)]
+        best = None
+        # 每人 1~people 份主食；1 份共享小吃；每人 1 杯饮料
+        for n_main in range(1, people + 1):
+            for main_combo in itertools.combinations(cand_mains, n_main):
+                for side in [None] + cand_sides:
+                    for d_combo in itertools.combinations(cand_drinks, people):
+                        combo = list(main_combo) + list(d_combo) + ([side] if side else [])
+                        cash = _combo_price(combo)
+                        if cash > budget:
+                            continue
+                        prot = sum(m.get("protein") or 0 for m in combo)
+                        reached = min(prot, goal)
+                        # 达标优先；达标后越便宜越好（避免为了多蛋白盲目加价）
+                        score = reached * 1000 - cash
+                        if best is None or score > best["score"]:
+                            best = {"combo": combo, "cash": cash, "prot": prot, "score": score}
+        if best:
+            basket = best["combo"]
+            prot = round(best["prot"], 1)
+            cash = best["cash"]
+        else:
+            # 预算过低：退化到普通贪心
+            basket, cash, prot = _bros_greedy(mains, sides, drinks, people, budget, priced)
+    else:
+        basket, cash, prot = _bros_greedy(mains, sides, drinks, people, budget, priced)
+
+    coupon = _best_coupon(cash, coupons) if coupons else None
+    minus = coupon["minus"] if coupon else 0.0
+    pay = round(cash - minus, 2)
+    saved = round(cash - pay, 2)
+    kcal = round(sum(m.get("energy") or 0 for m in basket), 1)
+    per = round(prot / people, 1)
+    met = (protein_target is not None and protein_target > 0 and per >= protein_target)
+    return {
+        "scenario": "好兄弟蛋白质活动（%d 男）" % people,
+        "basket": [m["name"] for m in basket],
+        "cash": cash,
+        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
+        "pay": pay,
+        "saved": saved,
+        "total_protein_g": prot,
+        "total_kcal": kcal,
+        "per_person_protein_g": per,
+        "protein_target_per_person_g": protein_target,
+        "protein_met": met if protein_target else None,
+        "tips": "练后/加班补蛋白：每人一份高蛋白堡 + 共享鸡翅鸡块；饮水选蛋白友好的豆浆/牛奶"
+                + (("；目标人均 %.0fg 已达成 ✅" % protein_target) if met
+                   else ("；目标人均 %.0fg 未达成，当前人均 %.1fg，可加预算或换更大份" % (protein_target, per)) if protein_target else ""),
+        "verdict": ("%d 个男生的蛋白质局：%s，原价 ¥%.2f，券后 ¥%.2f（省 ¥%.2f），合计 %.0f kcal / %.0fg 蛋白（人均 %.1fg）"
+                    % (people, "、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot, per))
+                   + (("｜目标人均 %.0fg 达标 ✅" % protein_target) if met
+                      else ("｜距目标人均 %.0fg 还差 %.1fg" % (protein_target, protein_target - per)) if protein_target else ""),
+    }
+
+
+def _bros_greedy(mains, sides, drinks, people, budget, priced):
+    """好兄弟模式默认贪心：每人一份高蛋白主食 + 共享一份高蛋白小吃 + 每人一杯饮料。"""
     basket = []
     used = set()
 
@@ -469,28 +573,9 @@ def mode_bros(budget, people=2, items=None, coupons=None):
     add(drinks, people)
     if len([m for m in basket if any(k in m["name"] for k in MAIN_KW)]) < people:
         add(mains, people)
-
     cash = _combo_price(basket)
-    coupon = _best_coupon(cash, coupons) if coupons else None
-    minus = coupon["minus"] if coupon else 0.0
-    pay = round(cash - minus, 2)
-    saved = round(cash - pay, 2)
     prot = round(sum(m.get("protein") or 0 for m in basket), 1)
-    kcal = round(sum(m.get("energy") or 0 for m in basket), 1)
-    return {
-        "scenario": "好兄弟蛋白质活动（%d 男）" % people,
-        "basket": [m["name"] for m in basket],
-        "cash": cash,
-        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
-        "pay": pay,
-        "saved": saved,
-        "total_protein_g": prot,
-        "total_kcal": kcal,
-        "per_person_protein_g": round(prot / people, 1),
-        "tips": "练后/加班补蛋白：每人一份高蛋白堡 + 共享鸡翅鸡块；饮水选蛋白友好的豆浆/牛奶",
-        "verdict": ("%d 个男生的蛋白质局：%s，原价 ¥%.2f，券后 ¥%.2f（省 ¥%.2f），合计 %.0f kcal / %.0fg 蛋白（人均 %.1fg）"
-                    % (people, "、".join(m["name"] for m in basket), cash, pay, saved, kcal, prot, prot / people)),
-    }
+    return basket, cash, prot
 
 
 def _member_redeem_plan(combo, balance, mall_food):
@@ -696,11 +781,11 @@ def _parse_nutrition(text):
         # 列序：名称,描述(null),千焦Kj,千卡Kcal,蛋白,脂肪,碳水,钠,钙
         try:
             kcal = float(parts[-6]); protein = float(parts[-5])
-            fat = float(parts[-4]); carb = float(parts[-3])
+            fat = float(parts[-4]); carb = float(parts[-3]); sodium = float(parts[-2])
         except ValueError:
             continue
         out.append({"name": name, "energy_kcal": kcal, "protein": protein,
-                    "fat": fat, "carb": carb})
+                    "fat": fat, "carb": carb, "sodium": sodium})
     return out
 
 
@@ -852,6 +937,7 @@ def fetch_real_items(client):
             "protein": n["protein"] if n else None,
             "fat": n["fat"] if n else None,
             "carb": n["carb"] if n else None,
+            "sodium": n["sodium"] if n else None,
         })
         meal_names.add(m["name"])
     # 以营养表补齐（套餐/组合餐在营养表里没有同名项，这里用个体项补足控卡池）
@@ -860,7 +946,7 @@ def fetch_real_items(client):
             items.append({
                 "code": "", "name": n["name"], "price": None,
                 "energy": n["energy_kcal"], "protein": n["protein"],
-                "fat": n["fat"], "carb": n["carb"],
+                "fat": n["fat"], "carb": n["carb"], "sodium": n["sodium"],
             })
     return items, len(meals), len(nutri), store_name
 
@@ -934,8 +1020,12 @@ def run_live(token):
     print(json.dumps(mode_elderly(40, items=price_items), ensure_ascii=False, indent=2))
     print("\n[真实·银发适老·软糯] 预算 60（年轻人带老人同行，真实门店价）：")
     print(json.dumps(mode_elderly(60, items=price_items, companion=True), ensure_ascii=False, indent=2))
+    print("\n[真实·银发适老·软糯·低钠] 预算 40（老人单独·低钠优先，真实门店价）：")
+    print(json.dumps(mode_elderly(40, items=price_items, low_sodium=True), ensure_ascii=False, indent=2))
     print("\n[真实·好兄弟蛋白质活动] 2男·预算 80（真实门店价）：")
     print(json.dumps(mode_bros(80, people=2, items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·好兄弟·人均蛋白目标40g] 2男·预算 80（真实门店价）：")
+    print(json.dumps(mode_bros(80, people=2, items=price_items, protein_target=40), ensure_ascii=False, indent=2))
 
     # ---- 积分模式：真实账户 + 真实积分商城 ----
     print("\n>>> 拉取真实积分账户与积分商城（query-my-account + mall-points-products）...")
@@ -979,12 +1069,13 @@ def main():
     ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member", "share", "elderly", "bros"], default="saver")
     ap.add_argument("--budget", type=float, default=50.0)
     ap.add_argument("--kcal", type=float, default=600.0)
-    ap.add_argument("--protein", type=float, default=30.0)
+    ap.add_argument("--protein", type=float, default=30.0, help="macro 模式：总目标蛋白(g)；bros 模式：人均蛋白目标(g)")
     ap.add_argument("--balance", type=float, default=3200.0)
     ap.add_argument("--avoid", type=str, default="")
     ap.add_argument("--scenario", choices=["family", "friends"], default="family", help="share 模式：亲子(family) / 闺蜜(friends)")
     ap.add_argument("--people", type=int, default=2, help="share/bros 模式：人数（默认 2）")
     ap.add_argument("--companion", action="store_true", help="elderly 模式：年轻人带老人同行（额外加一份年轻人常规主食）")
+    ap.add_argument("--low-sodium", action="store_true", help="elderly 模式：优先低钠软质单品并报告本餐钠摄入（控钠人群用）")
     ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例（离线）")
     ap.add_argument("--today", type=str, default="2026-10-11")
     ap.add_argument("--horizon", type=int, default=30)
@@ -1019,8 +1110,12 @@ def main():
         print(json.dumps(mode_elderly(40, companion=False), ensure_ascii=False, indent=2))
         print("\n=== [银发适老·软糯] 预算60（年轻人带老人同行，离线样本） ===")
         print(json.dumps(mode_elderly(60, companion=True), ensure_ascii=False, indent=2))
+        print("\n=== [银发适老·软糯·低钠] 预算40（老人单独·低钠优先，离线样本） ===")
+        print(json.dumps(mode_elderly(40, companion=False, low_sodium=True), ensure_ascii=False, indent=2))
         print("\n=== [好兄弟蛋白质活动] 2男·预算80（离线样本） ===")
         print(json.dumps(mode_bros(80, people=2), ensure_ascii=False, indent=2))
+        print("\n=== [好兄弟·人均蛋白目标40g] 2男·预算80（离线样本） ===")
+        print(json.dumps(mode_bros(80, people=2, protein_target=40), ensure_ascii=False, indent=2))
         return
 
     if args.mode == "saver":
@@ -1036,9 +1131,9 @@ def main():
     elif args.mode == "share":
         out = mode_share(args.budget, people=args.people, scenario=args.scenario)
     elif args.mode == "elderly":
-        out = mode_elderly(args.budget, companion=args.companion)
+        out = mode_elderly(args.budget, companion=args.companion, low_sodium=args.low_sodium)
     elif args.mode == "bros":
-        out = mode_bros(args.budget, people=args.people)
+        out = mode_bros(args.budget, people=args.people, protein_target=args.protein)
     else:
         out = mode_surprise(args.budget, args.avoid)
     print(json.dumps(out, ensure_ascii=False, indent=2))
