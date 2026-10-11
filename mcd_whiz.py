@@ -237,15 +237,49 @@ def mode_surprise(budget, avoid="", items=None):
         if ok_sides:
             picks = [main, random.choice(ok_sides)]
     if not picks:
-        picks = random.sample(pool, min(2, len(pool)))
+        # ⚠️ 退化路径必须做"总价约束"：pool 只保证单价 ≤ 预算，
+        #    随机抽两件各自合规、加起来仍会超预算（真实数据下实测：预算 30 开出 ¥31.5）。
+        #    这在 --demo-real 输出里就是"标题写预算 30、价格 31.5"的一眼穿帮。
+        picks = [random.choice(pool)]
+        others = [m for m in pool if m is not picks[0]]
+        random.shuffle(others)
+        for m in others:
+            if _combo_price(picks) + m["price"] <= budget:
+                picks.append(m)
+                break
+    # 兜底：极端数据下仍超预算时，砍到只剩最便宜的一件
+    while len(picks) > 1 and _combo_price(picks) > budget:
+        picks.pop()
     total = _combo_price(picks)
-    lines = [
-        "今天你是「佛系麦门弟子」🍟",
-        "今天你是「狠人麦霸」🍔",
-        "今天你是「自律即自由」🥗",
-        "今天你是「快乐水续命派」🥤",
-    ]
-    return {"items": [p["name"] for p in picks], "price": total, "quote": random.choice(lines)}
+    return {"items": [p["name"] for p in picks], "price": total,
+            "quote": _surprise_quote(picks)}
+
+
+def _surprise_quote(picks):
+    """按抽到的东西挑文案 —— 「麦旋风+扭扭薯」配「自律即自由」太违和。
+    只在与组合相符的候选里随机，保留盲盒的随机感又不跑偏。"""
+    kinds = [_classify(p["name"]) for p in picks]
+    names = "".join(p["name"] for p in picks)
+    lines = []
+    if "drink" in kinds:
+        lines.append("今天你是「快乐水续命派」🥤")
+    if any(k in names for k in ("堡", "牛", "腿", "巨无霸", "双层")):
+        lines.append("今天你是「狠人麦霸」🍔")
+    if all(k in ("side", "drink") for k in kinds):
+        lines.append("今天你是「佛系麦门弟子」🍟")
+    if _surprise_is_light(picks):
+        lines.append("今天你是「自律即自由」🥗")
+    if not lines:
+        lines = ["今天你是「随机麦门人」🎲"]
+    return random.choice(lines)
+
+
+def _surprise_is_light(picks):
+    """只有当"有营养数据且确实低卡"时才配「自律」文案，避免指鹿为马。"""
+    vals = [p.get("energy") for p in picks]
+    if any(v is None for v in vals):
+        return False
+    return sum(vals) <= 450
 
 
 SAUCE_KW = ["酱", "蘸", "风味", "配料", "调料", "葱", "香菜"]
@@ -297,7 +331,7 @@ SHARE_SCENARIO = {
         "avoid": ["辣", "椒", "麻辣", "韩式辣", "酒", "啤酒", "威士忌"],
         "pref_drink": ["牛奶", "豆浆", "橙", "汁", "苹果", "儿童"],
         "pref_side": ["鸡块", "鸡米", "玉米", "薯条", "派", "玩具", "开心乐园", "麦趣"],
-        "tip": "含儿童友好单品、已避开辛辣；可加购「开心乐园餐」拿玩具，更对孩子胃口",
+        "tip": "含儿童友好单品、已避开辛辣，偏爱牛奶/豆浆/果汁类饮品",
     },
     "friends": {  # 闺蜜：适合分享拍照、甜品/小吃优先
         "avoid": [],
@@ -369,6 +403,15 @@ def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
     coupon_minus = coupon["minus"] if coupon else 0.0
     pay = round(cash - coupon_minus, 2)
     saved = round(cash - pay, 2)
+    # ⚠️ 文案必须与实际预算余量一致：预算已花满时再说"可加购开心乐园餐"会自相矛盾
+    leftover = round(budget - pay, 2)
+    tip = cfg["tip"]
+    if leftover >= 15:
+        tip += "（还剩 ¥%.2f，够加购一份开心乐园餐/甜品）" % leftover
+    elif leftover > 0:
+        tip += "（还剩 ¥%.2f，够再加一份小食）" % leftover
+    else:
+        tip += "（预算已用满：想加主食/小食需提高预算）"
     # ⚠️ 用 _classify 互斥归类计数：旧实现分别用 MAIN_KW / DRINK_KW 判断，
     #    麦旋风之类的单品会被同时计入饮料和小食，导致 counts 加总与件数对不上。
     kinds = [_classify(m["name"]) for m in basket]
@@ -386,7 +429,8 @@ def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
         "pay": pay,
         "saved": saved,
         "per_person_cost": round(pay / people, 2),
-        "tips": cfg["tip"],
+        "budget_left": leftover,
+        "tips": tip,
         "verdict": ("%d 人「%s」分享篮：共 %d 件，原价 ¥%.2f，用券后 ¥%.2f（省 ¥%.2f），人均 ¥%.2f"
                     % (people, "亲子" if scenario == "family" else "闺蜜", len(basket),
                        cash, pay, saved, pay / people)),
@@ -1527,7 +1571,8 @@ def run_snapshot_replay(path=None):
     print("真实餐品  ：%s 件（其中有价 %s 件）" % (len(items), len(priced)))
     if meta.get("tools"):
         print("工具清单  ：%s ..." % "、".join(meta["tools"][:12]))
-    print("快照文件  ：%s%s" % (p, "（已合并本地私有段）" if has_private else "（仅公开段）"))
+    # ⚠️ 只打印文件名：绝对路径在 Windows 下会是 C:\Users\<你的名字>\...，会泄露本机用户名
+    print("快照文件  ：%s%s" % (os.path.basename(p), "（已合并本地私有段）" if has_private else "（仅公开段）"))
     print("-" * 70)
 
     # ---- 各段数据到底是不是真实取到的？逐段解析并如实标注 ----
