@@ -346,5 +346,5 @@ class TestRound2Robustness(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    print("运行回归测试：验证三轮外部代码审查提出的问题是否修复\n")
+    print("运行回归测试：麦麦精算师 MCD Whiz\n")
     unittest.main(verbosity=2)
