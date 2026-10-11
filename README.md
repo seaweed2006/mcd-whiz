@@ -8,6 +8,8 @@
 
 **一个 Skill 编排 35 个官方 MCP 工具 → 9 种决策模式**（覆盖官方三大方向：套餐定制 / 省钱 / 活动推荐）。已接真实数据、全程只读、支付由用户完成。
 
+⭐ **如果这个项目对你有用，欢迎点个 Star**——本作品参赛 2026 麦当劳程序员创意开发大赛（M-CODE，2026.10.09–10.25）。📄 参赛声明见 [`CONTEST_DECLARATION.md`](CONTEST_DECLARATION.md) ｜ 完整开发过程见 [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md)。基于腾讯 WorkBuddy 协作开发。
+
 ---
 
 ## 🤔 为什么做这个
