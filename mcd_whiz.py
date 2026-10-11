@@ -89,9 +89,17 @@ def mode_saver(budget, items=None, coupons=None):
     src = items if items is not None else MENU
     cps = coupons if coupons is not None else COUPONS
     # 贪心：单价热量性价比高 + 在预算内尽量凑满减
-    cand = [m for m in src if m["price"] <= budget]
+    # ⚠️ 必须过滤 price>0（而非仅 <=budget）：真实数据可能出现 price=0 的赠品，
+    #    0 元会进入下面的除法排序键导致 ZeroDivisionError。
+    cand = [m for m in src if (m.get("price") or 0) > 0 and m["price"] <= budget]
+    if not cand:
+        return {
+            "items": [], "original": 0.0, "coupon": "无", "pay": 0.0, "saved": 0.0,
+            "save_rate": "0%",
+            "verdict": "预算 ¥%.2f 内没有任何单品可选，请调高预算" % budget,
+        }
     # 以"能量/价格"排序挑主食，再补一杯（无营养数据者按 1/价格 兜底，仍可入选）
-    cand.sort(key=lambda m: ((m["energy"] or 1) / m["price"]), reverse=True)
+    cand.sort(key=lambda m: ((m.get("energy") or 1) / m["price"]), reverse=True)
     picks = []
     spent = 0.0
     for m in cand:
@@ -114,20 +122,28 @@ def mode_saver(budget, items=None, coupons=None):
 
 def mode_macro(kcal, protein, items=None):
     # 暴力搜 1~2 件组合，最小化 |热量-目标| 与 |蛋白-目标|
-    pool = items if items is not None else MENU
+    pool = [m for m in (items if items is not None else MENU) if (m.get("price") or 0) > 0]
+    if not pool:
+        # ⚠️ 原实现空池时 best 为 None，best["items"] 直接 AttributeError 崩溃
+        return {"items": [], "energy": 0, "protein": 0, "price": 0.0,
+                "target": f"{kcal}kcal / {protein}g 蛋白",
+                "verdict": "没有可用的带价餐品，无法配餐（请先拉取真实菜单）"}
     best = None
-    for a in pool:
-        for b in pool:
-            its = [a] if a is b else [a, b]
-            e = sum(i["energy"] for i in its)
-            p = sum(i["protein"] for i in its)
+    # ⚠️ 用索引枚举代替 `a is b` 身份比较：身份比较依赖对象复用，语义脆弱
+    for i in range(len(pool)):
+        for j in range(i, len(pool)):
+            its = [pool[i]] if i == j else [pool[i], pool[j]]
+            # ⚠️ 真实 MCP 数据可能缺 energy/protein 字段，一律用 .get 兜底，避免 KeyError
+            e = sum(x.get("energy") or 0 for x in its)
+            p = sum(x.get("protein") or 0 for x in its)
+            # 蛋白权重 *5：蛋白达标比热量达标更难，故放大其惩罚（README 应说明）
             cost = abs(e - kcal) + abs(p - protein) * 5
             if best is None or cost < best["cost"]:
                 best = {"items": its, "cost": cost}
     its = best["items"]
     total = _combo_price(its)
-    e = sum(i["energy"] for i in its)
-    p = sum(i["protein"] for i in its)
+    e = sum(x.get("energy") or 0 for x in its)
+    p = sum(x.get("protein") or 0 for x in its)
     return {
         "items": [i["name"] for i in its],
         "energy": e,
@@ -159,7 +175,8 @@ def mode_points(balance=None, products=None, expire_soon=0.0, meals=None):
         for mn, mp in meal_by_name.items():
             if mn in nm or nm in mn:
                 return mp
-        if p["price"] > 0:
+        # ⚠️ 积分商城数据常带 None 价格，直接比较会 TypeError，用 (x or 0) 兜底
+        if (p.get("price") or 0) > 0:
             return p["price"]
         if p["point"] <= 1:
             return 3.0
@@ -186,10 +203,12 @@ def mode_points(balance=None, products=None, expire_soon=0.0, meals=None):
     }
 
 
-def mode_activity(today="2026-10-11", horizon=30):
+def mode_activity(today=None, horizon=30):
     # 按日期把活动分成「进行中 / 即将开始（horizon 天内）」，给出参与方式
     import datetime
-    t = datetime.date.fromisoformat(today)
+    # ⚠️ 原实现把 today 硬编码为 "2026-10-11"，几个月后评委复跑时活动日历会停留在旧日期。
+    #    改为默认取系统当天，保证任何时候跑都是"今天"的视角。
+    t = datetime.date.fromisoformat(today) if today else datetime.date.today()
     ongoing, upcoming = [], []
     for c in CAMPAIGNS:
         s = datetime.date.fromisoformat(c["start"])
@@ -234,13 +253,38 @@ def mode_surprise(budget, avoid="", items=None):
 
 
 SAUCE_KW = ["酱", "蘸", "风味", "配料", "调料", "葱", "香菜"]
-DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "旋", "汽", "柠檬"]
+# ⚠️ 已从 DRINK_KW 移除单字「旋」：它会与 SIDE_KW 的「旋风」重叠，
+#    导致麦旋风被同时计入饮料与小食（双重计数）。麦旋风属甜品小食，归 SIDE_KW 即可。
+DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "汽", "柠檬"]
 SIDE_KW = ["薯条", "鸡翅", "鸡块", "鸡米", "玉米", "派", "麦乐", "nugget", "杯", "圆筒", "旋风", "圣代"]
-MAIN_KW = ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷", "肉", "鱼", "猪"]
+# ⚠️ 已从 MAIN_KW 移除单字「肉」：过于泛化，会把「皮蛋瘦肉粥」误判为主食，
+#    进而在银发低钠场景下压过真正的高蛋白主食（实测导致全餐仅 13g 蛋白）。
+MAIN_KW = ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷", "鱼", "猪"]
+
+
+def _classify(name):
+    """互斥归类：饮料 → 小食 → 主食 → 其他。
+    顺序很重要：先判小食可避免「鸡翅/鸡块」被 MAIN_KW 的「鸡」误判成主食；
+    DRINK_KW 已去「旋」，麦旋风归小食而非饮料。用于所有"计数/分类"场景，防止重复计数。"""
+    if any(k in name for k in DRINK_KW):
+        return "drink"
+    if any(k in name for k in SIDE_KW):
+        return "side"
+    if any(k in name for k in MAIN_KW):
+        return "main"
+    return "other"
+
 
 # 银发适老 / 软糯 关键词：偏好"天然软质、易消化、低刺激"单品；避开 辣/脆/炸/骨/派 等硬韧刺激物
 ELDER_SOFT_KW = ["粥", "玉米", "苹果", "圆筒", "圣代", "旋风", "鱼", "吉士", "板烧", "蒸", "燕麦", "豆浆", "奶", "汤"]
-ELDER_AVOID_KW = ["辣", "椒", "脆", "炸", "骨", "派", "坚果", "香菜", "葱", "冰", "酒"]
+# ⚠️ 原 ELDER_AVOID_KW 含单字「冰」，会把「圆筒冰淇淋」永远排除在软食之外，
+#    与下方 tips 里"圆筒冰淇淋较易咀嚼"的推荐自相矛盾。改为只排除真正的冷饮/冰品。
+ELDER_AVOID_KW = ["辣", "椒", "脆", "炸", "骨", "派", "坚果", "香菜", "葱", "冰镇", "冰饮", "碎冰", "沙冰", "酒"]
+
+# 积分估值：1 积分的到手现金价值（元）。用于把"积分"折算成真实成本，
+# 避免把积分当免费钱——这是会员模式诚实性的核心（见 _member_redeem_plan）。
+# 缺省由积分商城样本推算：薯条券 1200 分抵 ¥12 → 1 分 ≈ ¥0.01
+DEFAULT_VPP = 0.01
 
 # 好兄弟蛋白质活动 关键词：偏好"高蛋白、高能量"的堡/翅/块；避开 沙拉/粥/素 等低蛋白项
 BROS_KW = ["堡", "腿", "牛", "鸡", "虾", "排", "翅", "块", "肉", "鱼", "双层", "巨无霸", "麦辣"]
@@ -329,13 +373,17 @@ def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
     coupon_minus = coupon["minus"] if coupon else 0.0
     pay = round(cash - coupon_minus, 2)
     saved = round(cash - pay, 2)
-    n_main = len([m for m in basket if any(k in m["name"] for k in MAIN_KW)])
-    n_drink = len([m for m in basket if any(k in m["name"] for k in DRINK_KW)])
+    # ⚠️ 用 _classify 互斥归类计数：旧实现分别用 MAIN_KW / DRINK_KW 判断，
+    #    麦旋风之类的单品会被同时计入饮料和小食，导致 counts 加总与件数对不上。
+    kinds = [_classify(m["name"]) for m in basket]
+    n_main = kinds.count("main")
+    n_drink = kinds.count("drink")
+    n_other = len(basket) - n_main - n_drink
     return {
         "scenario": "亲子（family）" if scenario == "family" else "闺蜜（friends）",
         "people": people,
         "basket": [m["name"] for m in basket],
-        "counts": {"主食": n_main, "饮料": n_drink, "共享小食": len(basket) - n_main - n_drink},
+        "counts": {"主食": n_main, "饮料": n_drink, "共享小食": n_other},
         "cash": cash,
         "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
         "coupon_minus": coupon_minus,
@@ -578,32 +626,65 @@ def _bros_greedy(mains, sides, drinks, people, budget, priced):
     return basket, cash, prot
 
 
-def _member_redeem_plan(combo, balance, mall_food):
-    """对给定套餐找一张积分券替换其中单品，返回省现金的方案或 None。
-    mall_food 为积分商城食品券列表（含 point/price/name）；balance 为可用积分。"""
+def _estimate_vpp(mall_food):
+    """估算「1 积分值多少钱」（value per point，元/分）。
+    用积分商城里所有"有价格 + 有积分"的食品券求中位数代理；无可用数据时回退 DEFAULT_VPP。
+    ⚠️ 这个估值是会员模式诚实性的基础：不把积分当免费钱，才能算出真实净省钱。"""
+    rates = []
+    for f in mall_food or []:
+        pt = f.get("point") or 0
+        pr = f.get("price") or 0
+        if pt > 0 and pr > 0:
+            rates.append(pr / pt)
+    if not rates:
+        return DEFAULT_VPP
+    rates.sort()
+    return round(rates[len(rates) // 2], 6)
+
+
+def _member_redeem_plan(combo, balance, mall_food, vpp=None):
+    """对给定套餐找一张积分券替换其中单品，返回**真实净省钱**的方案或 None。
+
+    ⚠️ 关键修复（诚实性）：积分不是免费的钱。旧实现只用「现金差额 > 0」判断，
+    会把"花 2100 积分(≈¥21 价值) 省 ¥6 现金"算成赚了，实际净亏 ¥15，
+    导致"最省"结论反向。现在把积分按 vpp 折算成成本一起比较：
+        net_saved = 单品原价 - (券现金补差 + 积分×vpp)
+    只有 net_saved > 0 才推荐。
+    """
     if not combo or not mall_food:
         return None
+    if vpp is None:
+        vpp = _estimate_vpp(mall_food)
+
+    def _plan(item, f):
+        cash_topup = f.get("price") or 0
+        points_cost = round((f.get("point") or 0) * vpp, 2)
+        gross_saved = round((item.get("price") or 0) - cash_topup, 2)   # 仅看现金的表面省钱
+        net_saved = round(gross_saved - points_cost, 2)                 # 扣掉积分价值后的真实省钱
+        if net_saved <= 0:
+            return None
+        return {"replace_item": item["name"], "with_coupon": f["name"],
+                "cost_points": f.get("point"), "cash_topup": cash_topup,
+                "points_value_cost": points_cost, "vpp_used": vpp,
+                "cash_saved": gross_saved, "net_saved": net_saved}
+
     # 先精确匹配同名单品
     for item in combo:
         hit = next((f for f in mall_food
                     if item["name"] in f["name"] or f["name"] in item["name"]), None)
-        if hit and hit.get("point", 0) <= balance:
-            saved = round((item.get("price") or 0) - hit.get("price", 0), 2)
-            if saved > 0:
-                return {"replace_item": item["name"], "with_coupon": hit["name"],
-                        "cost_points": hit["point"], "cash_topup": hit.get("price"),
-                        "cash_saved": saved}
+        if hit and (hit.get("point") or 0) <= balance:
+            plan = _plan(item, hit)
+            if plan:
+                return plan
     # 退而求其次：仅当某券名能匹配到套餐里某单品时，才做同品替换（避免"把汉堡换成薯条"的误导）
-    ok = [f for f in mall_food if f.get("point", 0) > 0 and f["point"] <= balance]
+    ok = [f for f in mall_food if (f.get("point") or 0) > 0 and f["point"] <= balance]
     ok.sort(key=lambda f: (f["price"] / f["point"]) if f["point"] else 0, reverse=True)
     for f in ok:
         match = next((m for m in combo if m["name"] in f["name"] or f["name"] in m["name"]), None)
         if match:
-            saved = round((match.get("price", 0) - f.get("price", 0)), 2)
-            if saved > 0:
-                return {"replace_item": match["name"], "with_coupon": f["name"],
-                        "cost_points": f["point"], "cash_topup": f.get("price"),
-                        "cash_saved": saved}
+            plan = _plan(match, f)
+            if plan:
+                return plan
     return None
 
 
@@ -617,7 +698,9 @@ def _member_combo_search(budget, items, balance, mall_food, coupon_pool=None):
     # 价值排序（能量/价格 高者优先），限定候选规模避免组合爆炸
     priced.sort(key=lambda m: ((m.get("energy") or 1) / m["price"]), reverse=True)
     top = priced[:14]
-    best = None
+    vpp = _estimate_vpp(mall_food)
+    best_main = None   # 含主食的候选（优先）
+    best_any = None    # 无主食时的退化候选
     for r in (1, 2, 3):
         for combo in itertools.combinations(top, r):
             cash = round(sum(m["price"] for m in combo), 2)
@@ -625,21 +708,32 @@ def _member_combo_search(budget, items, balance, mall_food, coupon_pool=None):
                 continue
             coupon = _best_coupon(cash, cps)
             coupon_minus = coupon["minus"] if coupon else 0.0
-            redeem = _member_redeem_plan(list(combo), balance, mall_food)
-            redeem_saved = redeem["cash_saved"] if redeem else 0.0
+            redeem = _member_redeem_plan(list(combo), balance, mall_food, vpp=vpp)
+            # ⚠️ 用 net_saved（已扣除积分价值成本），不是 cash_saved（表面现金省钱）
+            redeem_saved = redeem["net_saved"] if redeem else 0.0
             eff = round(cash - coupon_minus - redeem_saved, 2)
             if eff < 0:
                 eff = 0.0
-            # 评分：到手食物价值优先，再比会员净省（券+积分）
-            score = cash * 100 + redeem_saved * 10 - coupon_minus
-            if best is None or score > best["score"]:
-                best = {
-                    "combo": list(combo), "cash": cash,
-                    "coupon": coupon["name"] if coupon else None,
-                    "coupon_minus": coupon_minus,
-                    "redeem": redeem, "eff": eff, "score": score,
-                }
-    return best
+            # ⚠️ 评分修复：旧版 score = cash*100 + ... 奖励"把预算花满"，与"最省"定位相反。
+            #    现在以「真实净支出 eff 最小」为第一目标；eff 相同时，到手食物价值(cash)高者胜。
+            # ⚠️ "必须含主食"是硬约束而非加分项：否则纯最小化会退化成只买一个圆筒冰淇淋(¥5)，
+            #    数学上最省但不是一顿正餐。故分两档收集：优先含主食的组合，其次才退化。
+            has_main = any(_classify(m["name"]) == "main" for m in combo)
+            score = -eff * 1000 + cash
+            cand = {
+                "combo": list(combo), "cash": cash,
+                "coupon": coupon["name"] if coupon else None,
+                "coupon_minus": coupon_minus,
+                "redeem": redeem, "eff": eff, "score": score, "vpp": vpp,
+                "has_main": has_main,
+            }
+            if has_main:
+                if best_main is None or score > best_main["score"]:
+                    best_main = cand
+            else:
+                if best_any is None or score > best_any["score"]:
+                    best_any = cand
+    return best_main if best_main is not None else best_any
 
 
 def mode_member(budget=None, balance=None, expire_soon=0.0, meals=None, coupons=None, mall_food=None):
@@ -682,6 +776,13 @@ def mode_member(budget=None, balance=None, expire_soon=0.0, meals=None, coupons=
             redeem = search["redeem"]
             eff = search["eff"]
             saved = round(search["cash"] - eff, 2)
+            # 诚实披露积分成本：让用户知道"省的钱"里有多少是用积分换来的
+            pts_note = ""
+            if redeem:
+                pts_note = ("（其中用掉 %.0f 积分，按 1 分≈¥%.4f 折算为 ¥%.2f 成本，已计入）"
+                            % (redeem.get("cost_points") or 0,
+                               redeem.get("vpp_used") or DEFAULT_VPP,
+                               redeem.get("points_value_cost") or 0))
             return {
                 "budget": budget,
                 "combo": [m["name"] for m in search["combo"]],
@@ -691,11 +792,13 @@ def mode_member(budget=None, balance=None, expire_soon=0.0, meals=None, coupons=
                 "applied_coupon": coupon if coupon else "无可用券（可 auto-bind-coupons 一键领）",
                 "coupon_minus": search["coupon_minus"],
                 "points_redeem_plan": redeem,
+                "points_value_per_point": search.get("vpp", DEFAULT_VPP),
                 "expire_rescue": expire_tip,
                 "member_effective_price": eff,
                 "member_saved": saved,
-                "verdict": ("预算 ¥%.2f 内，会员这样点最省：到手食物值 ¥%.2f，卡包券+积分券折后实付 ¥%.2f（省 ¥%.2f）"
-                            % (budget, search["cash"], eff, saved)),
+                "verdict": ("预算 ¥%.2f 内，会员这样点最省：原价 ¥%.2f，卡包券+积分券折后净支出 ¥%.2f"
+                            "（省 ¥%.2f）%s"
+                            % (budget, search["cash"], eff, saved, pts_note)),
             }
         # 预算内无解（预算极低）：退化为「最便宜单品」
         cheapest = min([m for m in meals if m.get("price") is not None and m["price"] > 0],
@@ -1064,6 +1167,71 @@ def run_live(token):
     print("\n--- 真实接入验证完成（全程只读：未执行下单/领券等任何写操作）---")
 
 
+def load_snapshot(path=None):
+    """加载真实 MCP 数据快照（由 capture_fixture.py 生成）。缺省路径 fixtures/real_snapshot.json。"""
+    import os as _os
+    p = path or _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                              "fixtures", "real_snapshot.json")
+    if not _os.path.isfile(p):
+        return None, p
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f), p
+
+
+def run_snapshot_replay(path=None):
+    """用**已保存的真实 MCP 数据**离线回放全流程（无需 Token）。
+
+    为什么要有这个模式：评委/观众没有麦当劳 MCP Token，跑不了 --live，
+    就无法验证"这玩意是不是真接了麦当劳"。本模式用真实抓取的快照驱动全部算法，
+    并打印数据出处（抓取时间、门店、工具数、餐品数），让核心卖点可被任何人复现验证。"""
+    snap, p = load_snapshot(path)
+    if snap is None:
+        print("❌ 未找到真实数据快照：%s" % p)
+        print("   生成方式（需麦当劳 MCP Token）：")
+        print("     set MCD_MCP_TOKEN=你的Token && python capture_fixture.py")
+        return
+    meta = snap.get("_meta", {})
+    items = snap.get("items", [])
+    priced = [i for i in items if i.get("price") is not None and i["price"] > 0]
+
+    print("=" * 66)
+    print("真实麦当劳 MCP 数据 · 离线回放（无需 Token，可复现）")
+    print("=" * 66)
+    print("数据来源  ：%s" % meta.get("source"))
+    print("接口端点  ：%s" % meta.get("endpoint"))
+    print("抓取时间  ：%s" % meta.get("captured_at"))
+    print("门店代码  ：%s" % meta.get("store_code"))
+    print("可用工具  ：%s 个" % meta.get("tool_count"))
+    print("真实餐品  ：%s 件（其中有价 %s 件）" % (len(items), len(priced)))
+    if meta.get("tools"):
+        print("工具清单  ：%s ..." % "、".join(meta["tools"][:12]))
+    print("-" * 66)
+
+    if not priced:
+        print("⚠️ 快照中没有带价格的餐品，无法回放算法。")
+        return
+
+    def show(title, data):
+        print("\n【%s】" % title)
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+
+    show("省钱 · 预算 30（真实门店价）", mode_saver(30, items=priced))
+    show("控卡 · 600kcal/30g 蛋白（真实营养表）", mode_macro(600, 30, items=priced))
+    show("会员卡×套餐 · 预算 30（真实价，已扣除积分真实成本）", mode_member(budget=30, meals=priced))
+    show("盲盒 · 预算 30（真实价，固定种子可复现）", mode_surprise(30, items=priced))
+    show("亲子 · 2人/60（真实价）", mode_share(60, people=2, scenario="family", items=priced))
+    show("闺蜜 · 2人/60（真实价）", mode_share(60, people=2, scenario="friends", items=priced))
+    show("银发适老 · 老人单独/40（真实价）", mode_elderly(40, items=priced))
+    show("银发适老 · 年轻人带老人/60（真实价）", mode_elderly(60, items=priced, companion=True))
+    show("银发适老 · 低钠/40（真实营养表钠字段）", mode_elderly(40, items=priced, low_sodium=True))
+    show("好兄弟 · 2人/80（真实价）", mode_bros(80, people=2, items=priced))
+    show("好兄弟 · 人均蛋白目标 40g（真实价）", mode_bros(80, people=2, items=priced, protein_target=40))
+
+    print("\n" + "-" * 66)
+    print("✅ 以上全部由真实麦当劳 MCP 数据计算得出（零虚构）。")
+    print("   想重新抓取最新真实数据：python capture_fixture.py")
+
+
 def main():
     ap = argparse.ArgumentParser(description="麦麦精算师：离线演示 + 真实MCP接入")
     ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member", "share", "elderly", "bros"], default="saver")
@@ -1077,14 +1245,26 @@ def main():
     ap.add_argument("--companion", action="store_true", help="elderly 模式：年轻人带老人同行（额外加一份年轻人常规主食）")
     ap.add_argument("--low-sodium", action="store_true", help="elderly 模式：优先低钠软质单品并报告本餐钠摄入（控钠人群用）")
     ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例（离线）")
-    ap.add_argument("--today", type=str, default="2026-10-11")
+    ap.add_argument("--demo-real", action="store_true",
+                    help="用已保存的真实 MCP 数据快照离线回放全流程（无需 Token，评委可复现）")
+    ap.add_argument("--snapshot", type=str, default=None, help="指定真实数据快照文件路径")
+    ap.add_argument("--today", type=str, default=None, help="activity 模式基准日期，缺省取系统当天")
     ap.add_argument("--horizon", type=int, default=30)
+    ap.add_argument("--seed", type=int, default=42,
+                    help="盲盒/随机模式的随机种子（默认 42，保证 demo 输出可复现，方便截图与录屏）")
     ap.add_argument("--live", action="store_true", help="连接真实麦当劳 MCP（需 MCD_MCP_TOKEN 或 --token）")
     ap.add_argument("--token", type=str, default=None, help="麦当劳 MCP Token（也可走环境变量 MCD_MCP_TOKEN）")
     args = ap.parse_args()
+    # ⚠️ 固定随机种子：盲盒等随机模式在 demo/截图/录屏时必须可复现，
+    #    否则评委每次跑结果都不同。可用 --seed 覆盖。
+    random.seed(args.seed)
 
     if args.live:
         run_live(args.token or os.environ.get("MCD_MCP_TOKEN", ""))
+        return
+
+    if args.demo_real:
+        run_snapshot_replay(args.snapshot)
         return
 
     if args.demo:
