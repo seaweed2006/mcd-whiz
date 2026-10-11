@@ -3,9 +3,9 @@
 """
 麦麦精算师 · 回归测试（针对外部代码审查提出的 7 类问题）
 
-背景：外部 AI（Kimi）对 mcd_whiz.py 做了一轮代码审查，提出 2 个诚实性硬伤、
-3 个崩溃路径、1 个关键词误分类与若干健壮性问题。本文件把每一条都变成
-**可执行的断言**，任何人（包括评审、包括其他 AI）运行即可客观验证修复是否生效：
+背景：外部代码审查对 mcd_whiz.py 提出了 2 个诚实性硬伤、3 个崩溃路径、
+1 个关键词误分类与若干健壮性问题。本文件把每一条都变成**可执行的断言**，
+任何人运行即可客观验证修复是否生效：
 
     python test_fixes.py
 
@@ -139,7 +139,7 @@ class TestShareCounts(unittest.TestCase):
         self.assertEqual(total, len(out["basket"]), "分类计数加总必须等于实际件数")
 
     def test_family_tip_is_consistent_with_budget_left(self):
-        """预算花满时不能再说"可加购开心乐园餐"（Kimi 第三轮观察）"""
+        """预算花满时不能再说"可加购开心乐园餐"（外部审查第三轮观察）"""
         for budget in (30, 40, 60, 90):
             out = M.mode_share(budget, people=2, scenario="family")
             self.assertAlmostEqual(out["budget_left"], round(budget - out["pay"], 2), places=2)
