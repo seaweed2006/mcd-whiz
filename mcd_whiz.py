@@ -231,13 +231,111 @@ def mode_surprise(budget, avoid="", items=None):
 
 
 SAUCE_KW = ["酱", "蘸", "风味", "配料", "调料", "葱", "香菜"]
-DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "旋", "汽", "柠檬", "苹果", "沙拉"]
+DRINK_KW = ["可乐", "咖啡", "豆浆", "茶", "橙", "汁", "牛奶", "旋", "汽", "柠檬"]
 SIDE_KW = ["薯条", "鸡翅", "鸡块", "鸡米", "玉米", "派", "麦乐", "nugget", "杯", "圆筒", "旋风", "圣代"]
 MAIN_KW = ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷", "肉", "鱼", "猪"]
 
 
 def _is_excluded(n):
     return any(k in n for k in SAUCE_KW + DRINK_KW)
+
+
+# 亲子 / 闺蜜 场景关键词（控制"该避开的"与"该偏好的"）
+SHARE_SCENARIO = {
+    "family": {  # 亲子：儿童友好、避开辛辣、偏好牛奶/豆浆/果汁与趣趣单品
+        "avoid": ["辣", "椒", "麻辣", "韩式辣", "酒", "啤酒", "威士忌"],
+        "pref_drink": ["牛奶", "豆浆", "橙", "汁", "苹果", "儿童"],
+        "pref_side": ["鸡块", "鸡米", "玉米", "薯条", "派", "玩具", "开心乐园", "麦趣"],
+        "tip": "含儿童友好单品、已避开辛辣；可加购「开心乐园餐」拿玩具，更对孩子胃口",
+    },
+    "friends": {  # 闺蜜：适合分享拍照、甜品/小吃优先
+        "avoid": [],
+        "pref_drink": ["可乐", "咖啡", "奶茶", "柠檬", "橙", "汁", "旋", "牛奶"],
+        "pref_side": ["麦旋风", "新地", "圆筒", "圣代", "薯条", "鸡翅", "鸡块", "鸡米", "派", "分享"],
+        "tip": "适合两人分享拍照：配麦旋风/新地更出片，薯条/鸡块是经典分享小吃",
+    },
+}
+
+
+def mode_share(budget, people=2, scenario="family", items=None, coupons=None):
+    """亲子 / 闺蜜 共享模式：按人数与场景，在预算内拼一份"每人有主食+饮料、再共享小食"的分享篮。
+    scenario=family 偏儿童友好（避辛辣、爱牛奶果汁）；scenario=friends 偏分享拍照（甜品小吃优先）。
+    返回分享篮、人均花费、可用券与省的钱。items 为带价格的餐品。"""
+    if people < 1:
+        people = 1
+    src = items if items is not None else MENU
+    cps = coupons if coupons is not None else COUPONS
+    priced = [m for m in src if m.get("price") is not None and m["price"] > 0]
+    if not priced:
+        return {"scenario": scenario, "people": people, "verdict": "无可用餐品数据，请先拉取真实菜单"}
+    cfg = SHARE_SCENARIO.get(scenario, SHARE_SCENARIO["family"])
+
+    def keep(m):
+        return not any(k in m["name"] for k in cfg["avoid"])
+
+    mains = [m for m in priced if any(k in m["name"] for k in MAIN_KW) and keep(m)]
+    drinks = [m for m in priced if any(k in m["name"] for k in DRINK_KW) and keep(m)]
+    sides = [m for m in priced if any(k in m["name"] for k in SIDE_KW) and keep(m)]
+
+    # 场景偏好排序：先把"偏好关键词"命中者排前
+    def pref_sort(pool, keys):
+        pool = sorted(pool, key=lambda m: m["price"])
+        pool.sort(key=lambda m: -sum(k in m["name"] for k in keys))
+        return pool
+
+    mains = pref_sort(mains, ["堡", "腿", "鸡", "牛", "虾", "排", "饭", "卷"])
+    drinks = pref_sort(drinks, cfg["pref_drink"])
+    sides = pref_sort(sides, cfg["pref_side"])
+
+    # 贪心拼篮：先保证每人 1 主食 + 1 饮料（去重增加丰富度），再有余量加 1 个共享小食
+    basket = []
+    used_names = set()
+
+    def add_unique(pool, max_n):
+        added = 0
+        for m in pool:
+            if added >= max_n:
+                break
+            if m["name"] in used_names:
+                continue
+            if _combo_price(basket) + m["price"] <= budget:
+                basket.append(m)
+                used_names.add(m["name"])
+                added += 1
+        return added
+
+    add_unique(mains, people)
+    add_unique(drinks, people)
+    add_unique(sides, 1)
+    # 若主食/饮料未凑够人数（预算紧），放宽去重再补一次
+    if len([m for m in basket if any(k in m["name"] for k in MAIN_KW)]) < people:
+        add_unique(mains, people)
+    if len([m for m in basket if any(k in m["name"] for k in DRINK_KW)]) < people:
+        add_unique(drinks, people)
+
+    cash = _combo_price(basket)
+    coupon = _best_coupon(cash, cps) if cps else None
+    coupon_minus = coupon["minus"] if coupon else 0.0
+    pay = round(cash - coupon_minus, 2)
+    saved = round(cash - pay, 2)
+    n_main = len([m for m in basket if any(k in m["name"] for k in MAIN_KW)])
+    n_drink = len([m for m in basket if any(k in m["name"] for k in DRINK_KW)])
+    return {
+        "scenario": "亲子（family）" if scenario == "family" else "闺蜜（friends）",
+        "people": people,
+        "basket": [m["name"] for m in basket],
+        "counts": {"主食": n_main, "饮料": n_drink, "共享小食": len(basket) - n_main - n_drink},
+        "cash": cash,
+        "coupon": coupon["name"] if coupon else "无可用券（可 auto-bind-coupons 一键领）",
+        "coupon_minus": coupon_minus,
+        "pay": pay,
+        "saved": saved,
+        "per_person_cost": round(pay / people, 2),
+        "tips": cfg["tip"],
+        "verdict": ("%d 人「%s」分享篮：共 %d 件，原价 ¥%.2f，用券后 ¥%.2f（省 ¥%.2f），人均 ¥%.2f"
+                    % (people, "亲子" if scenario == "family" else "闺蜜", len(basket),
+                       cash, pay, saved, pay / people)),
+    }
 
 
 def _member_redeem_plan(combo, balance, mall_food):
@@ -613,7 +711,7 @@ def fetch_real_items(client):
 
 
 def run_live(token):
-    """连接真实麦当劳 MCP：握手、列工具、校验五模式工具，并用真实数据跑省钱/控卡/盲盒。"""
+    """连接真实麦当劳 MCP：握手、列工具、校验七模式工具，并用真实数据跑省钱/控卡/盲盒/亲子闺蜜。"""
     try:
         from mcp_client import McpClient
     except ImportError:
@@ -634,7 +732,7 @@ def run_live(token):
     if len(names) > 10:
         print(f"   …（共 {len(names)} 个）")
 
-    # 六模式 → 真实工具映射（只校验"工具是否可用"，不触发任何写操作）
+    # 七模式 → 真实工具映射（只校验"工具是否可用"，不触发任何写操作）
     mapping = {
         "省钱 saver": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons", "query-my-coupons"],
         "控卡 macro": ["list-nutrition-foods", "query-meals", "calculate-price"],
@@ -642,8 +740,9 @@ def run_live(token):
         "会员 member": ["query-my-account", "query-my-coupons", "mall-points-products", "query-meals"],
         "活动 activity": ["campaign-calendar", "query-party-city", "query-party-store", "party-order-create"],
         "盲盒 surprise": ["query-meals", "calculate-price"],
+        "亲子/闺蜜 share": ["query-meals", "calculate-price", "query-store-coupons", "available-coupons"],
     }
-    print("\n>>> 六模式所需工具可用性：")
+    print("\n>>> 七模式所需工具可用性：")
     for mode, need in mapping.items():
         ok = [t for t in need if t in names]
         miss = [t for t in need if t not in names]
@@ -660,7 +759,7 @@ def run_live(token):
         print("  ⚠️ 真实数据解析为空，改用内置样本演示。")
         items = MENU
 
-    print("\n========== 真实数据驱动的五模式 ==========")
+    print("\n========== 真实数据驱动（省钱/控卡/盲盒/积分/会员/活动/亲子闺蜜）==========")
     price_items = [i for i in items if i["price"] is not None]
     macro_items = [i for i in items if i["energy"] is not None and i["protein"] is not None]
     print(f"（省钱/盲盒用 {len(price_items)} 个真实价格餐品；控卡用 {len(macro_items)} 个真实营养餐品）")
@@ -670,6 +769,10 @@ def run_live(token):
     print(json.dumps(mode_macro(600, 30, items=macro_items), ensure_ascii=False, indent=2))
     print("\n[真实·盲盒] 预算 30 元：")
     print(json.dumps(mode_surprise(30, items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·亲子/闺蜜] 2人·亲子·预算 60（真实门店价）：")
+    print(json.dumps(mode_share(60, people=2, scenario="family", items=price_items), ensure_ascii=False, indent=2))
+    print("\n[真实·亲子/闺蜜] 2人·闺蜜·预算 60（真实门店价）：")
+    print(json.dumps(mode_share(60, people=2, scenario="friends", items=price_items), ensure_ascii=False, indent=2))
 
     # ---- 积分模式：真实账户 + 真实积分商城 ----
     print("\n>>> 拉取真实积分账户与积分商城（query-my-account + mall-points-products）...")
@@ -710,12 +813,14 @@ def run_live(token):
 
 def main():
     ap = argparse.ArgumentParser(description="麦麦精算师：离线演示 + 真实MCP接入")
-    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member"], default="saver")
+    ap.add_argument("--mode", choices=["saver", "macro", "points", "activity", "surprise", "member", "share"], default="saver")
     ap.add_argument("--budget", type=float, default=50.0)
     ap.add_argument("--kcal", type=float, default=600.0)
     ap.add_argument("--protein", type=float, default=30.0)
     ap.add_argument("--balance", type=float, default=3200.0)
     ap.add_argument("--avoid", type=str, default="")
+    ap.add_argument("--scenario", choices=["family", "friends"], default="family", help="share 模式：亲子(family) / 闺蜜(friends)")
+    ap.add_argument("--people", type=int, default=2, help="share 模式：人数（默认 2）")
     ap.add_argument("--demo", action="store_true", help="跑全部模式内置示例（离线）")
     ap.add_argument("--today", type=str, default="2026-10-11")
     ap.add_argument("--horizon", type=int, default=30)
@@ -742,6 +847,10 @@ def main():
         print(json.dumps(mode_activity(args.today, args.horizon), ensure_ascii=False, indent=2))
         print("\n=== [盲盒] 预算30 ===")
         print(json.dumps(mode_surprise(30), ensure_ascii=False, indent=2))
+        print("\n=== [亲子/闺蜜] 2人·亲子·预算60（离线样本） ===")
+        print(json.dumps(mode_share(60, people=2, scenario="family"), ensure_ascii=False, indent=2))
+        print("\n=== [亲子/闺蜜] 2人·闺蜜·预算60（离线样本） ===")
+        print(json.dumps(mode_share(60, people=2, scenario="friends"), ensure_ascii=False, indent=2))
         return
 
     if args.mode == "saver":
@@ -754,6 +863,8 @@ def main():
         out = mode_activity(args.today, args.horizon)
     elif args.mode == "member":
         out = mode_member(budget=args.budget)
+    elif args.mode == "share":
+        out = mode_share(args.budget, people=args.people, scenario=args.scenario)
     else:
         out = mode_surprise(args.budget, args.avoid)
     print(json.dumps(out, ensure_ascii=False, indent=2))
