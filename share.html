@@ -3,54 +3,92 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>麦麦精算师 · 求一个 Star ⭐</title>
+<title>麦麦精算师 · 帮我点个 Star（10秒教程）</title>
 <style>
-  :root{--brand:#ff2e3a;--brand2:#ffc600;--ink:#222;--sub:#666;--line:#f0e0d0;}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#fffdf7;color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:24px 14px}
-  .card{max-width:520px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.08)}
-  .top{background:linear-gradient(135deg,var(--brand),#ff7a3d);color:#fff;padding:24px;text-align:center}
-  .top h1{font-size:26px;letter-spacing:1px}
-  .top .t{display:inline-block;background:var(--brand2);color:#3a2a00;font-weight:800;padding:3px 12px;border-radius:999px;font-size:13px;margin-top:8px}
-  .top p{margin-top:10px;font-size:14px;opacity:.95}
-  .qr{text-align:center;padding:22px}
-  .qr img{width:260px;height:260px;border-radius:14px;border:1px solid var(--line)}
-  .qr .url{margin-top:10px;font-size:13px;color:var(--sub);word-break:break-all}
-  .steps{padding:0 24px 8px}
-  .step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;font-size:14px}
-  .step b{background:var(--brand);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px;font-size:13px}
-  .modes{padding:12px 24px 4px;font-size:13px;color:var(--sub);line-height:1.9}
-  .modes b{color:var(--ink)}
-  .ask{margin:14px 24px 22px;background:#fff4f4;border:1px dashed var(--brand);border-radius:14px;padding:14px;text-align:center;font-size:15px;font-weight:700;color:#c00}
-  .ask span{display:block;font-weight:400;font-size:12px;color:var(--sub);margin-top:6px}
+  body{background:#fffdf7;color:#222;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:20px 12px;line-height:1.6}
+  .card{max-width:540px;margin:0 auto}
+  .top{background:linear-gradient(135deg,#ff2e3a,#ff7a3d);color:#fff;border-radius:18px 18px 0 0;padding:20px;text-align:center}
+  .top h1{font-size:22px} .top p{font-size:13px;opacity:.95;margin-top:6px}
+  .body{background:#fff;border:1px solid #f0e0d0;border-top:none;border-radius:0 0 18px 18px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+  .qr{text-align:center;margin-bottom:6px}
+  .qr img{width:210px;height:210px;border-radius:12px;border:1px solid #eee}
+  .qr div{font-size:12px;color:#888;margin-top:4px;word-break:break-all}
+  .reassure{background:#eaf7ef;border:1px solid #bfe3cd;color:#1a7a45;border-radius:12px;padding:10px 12px;font-size:13px;margin:14px 0;text-align:center}
+  h2{font-size:16px;margin:18px 0 10px;display:flex;align-items:center;gap:6px}
+  h2 .n{background:#ff2e3a;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:0 0 22px}
+  /* GitHub 手机页示意 */
+  .phone{border:2px solid #333;border-radius:16px;overflow:hidden;font-size:12px;margin:8px 0 4px}
+  .ph-top{background:#111;color:#fff;padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+  .ph-path{color:#fff;font-weight:700}
+  .ph-signin{background:#2da44e;color:#fff;padding:3px 10px;border-radius:6px;font-weight:700}
+  .ph-name{padding:10px 12px;border-bottom:1px solid #eee}
+  .ph-name b{color:#0969da}
+  .ph-btns{padding:10px 12px;display:flex;gap:8px;border-bottom:1px solid #eee}
+  .ph-btn{border:1px solid #d0d7de;border-radius:6px;padding:4px 10px;color:#333;background:#f6f8fa;position:relative}
+  .ph-btn.star{background:#fff8c5;border-color:#d4a72c;font-weight:800}
+  .anno{position:relative}
+  .anno .tag{position:absolute;background:#ff2e3a;color:#fff;font-weight:800;font-size:12px;padding:2px 8px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .tag.t1{top:-14px;right:-6px;transform:rotate(4deg)}
+  .tag.t2{top:-16px;left:-10px;transform:rotate(-4deg)}
+  .cap{font-size:12px;color:#888;text-align:center;margin-bottom:4px}
+  .reg{background:#f6f8fa;border:1px solid #e1e4e8;border-radius:12px;padding:12px 14px;font-size:13px;margin-top:10px}
+  .reg b{color:#0969da}
+  .reg li{margin-left:18px;margin-top:4px}
+  .modes{font-size:12px;color:#777;margin-top:16px;line-height:1.9;border-top:1px dashed #eee;padding-top:12px}
+  .ask{margin-top:14px;background:#fff4f4;border:1px dashed #ff2e3a;border-radius:12px;padding:12px;text-align:center;font-weight:800;color:#c00;font-size:15px}
+  .ask span{display:block;font-weight:400;font-size:12px;color:#888;margin-top:4px}
 </style>
 </head>
 <body>
 <div class="card">
   <div class="top">
     <h1>🍔 麦麦精算师 MCD Whiz</h1>
-    <div class="t">2026 麦当劳程序员创意开发大赛参赛作品</div>
-    <p>一个 Skill 编排 35 个麦当劳官方 MCP 工具<br>→ 9 种点餐决策模式，接真实门店数据</p>
+    <p>我参加麦当劳编程大赛的作品 · 排名就看 Star 数<br><b>全程 10 秒，不用看懂任何英文</b></p>
   </div>
+  <div class="body">
 
-  <div class="qr">
-    <img src="data:image/png;base64,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" alt="扫码打开项目">
-    <div class="url">github.com/seaweed2006/mcd-whiz</div>
-  </div>
+    <div class="qr">
+      <img src="data:image/png;base64,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" alt="扫码打开项目">
+      <div>github.com/seaweed2006/mcd-whiz</div>
+    </div>
 
-  <div class="steps">
-    <div class="step"><b>1</b><div>微信/手机相机<b>扫上面二维码</b>，打开 GitHub 项目页</div></div>
-    <div class="step"><b>2</b><div>点页面<b>右上角的 ★ Star</b> 按钮（需登录 GitHub）</div></div>
-    <div class="step"><b>3</b><div>点亮变黄即成功 ⭐ 感谢!</div></div>
-  </div>
+    <div class="reassure">打开后是一堆英文和代码？<b>没关系，那都是给评委看的</b>，你只要照下面两张图点两下 ✅</div>
 
-  <div class="modes">
-    💰省钱 · 🥗控卡 · 🎟️积分 · 🪪会员 · 📅活动 · 🎲盲盒 · 👨‍👩‍👧亲子闺蜜 · 👵银发软糯 · 💪兄弟蛋白
-  </div>
+    <h2><span class="n">1</span>没有账号？先花 1 分钟注册（已有账号跳到第 2 步）</h2>
+    <div class="reg">
+      点页面右上角绿色 <b>Sign in</b> → 拉到最下点 <b>Create an account</b> →
+      填 <b>邮箱 + 密码 + 用户名</b> → 去邮箱点验证链接，回来登录。
+      <li>用户名随便起，比如 mcd888、xiaoming2026 都行</li>
+      <li>手机上操作完全没问题</li>
+    </div>
 
-  <div class="ask">
-    帮我点个 Star 吧，排名就靠它！🙏
-    <span>赛事 10.09–10.25 · 前 100 名有实体徽章｜扫码不花钱，就是给个支持</span>
+    <h2><span class="n">2</span>对照下面这张图：<b>①登录入口在右上角，②星星按钮在 Fork 旁边</b></h2>
+    <div class="cap">▼ 打开页面长这样（顶部）：</div>
+    <div class="phone">
+      <div class="ph-top anno">
+        <span class="ph-path">☰ &nbsp;seaweed2006 / mcd-whiz</span>
+        <span class="ph-signin">Sign in</span>
+        <span class="tag t2" style="top:-12px;right:44px;">① 先点这里登录</span>
+      </div>
+      <div class="ph-name">🍔 mcd-whiz <span style="background:#ddd;border-radius:8px;padding:1px 6px;font-size:10px">Public</span></div>
+      <div class="ph-btns anno">
+        <span class="ph-btn">Notifications</span>
+        <span class="ph-btn">Fork 0</span>
+        <span class="ph-btn star">☆ Star</span>
+        <span class="tag t1" style="top:-14px;right:-4px;">② 登录后点这个星星！</span>
+      </div>
+    </div>
+
+    <h2><span class="n">3</span>点 <b>☆ Star</b> → 星星变黄 ⭐ → 成功！</h2>
+    <div class="cap">就这么简单，谢谢你的支持 🙏</div>
+
+    <div class="modes">作品能干嘛：💰省钱 · 🥗控卡 · 🎟️积分 · 🪪会员 · 📅活动 · 🎲盲盒 · 👨‍👩‍👧亲子闺蜜 · 👵银发软糯 · 💪兄弟蛋白——以后点麦当劳前问它一句，真能省十几块。</div>
+
+    <div class="ask">
+      帮我点个 Star 吧，比赛排名就靠它！🙏
+      <span>赛事 10.09–10.25 · 扫码免费，只是给个支持</span>
+    </div>
   </div>
 </div>
 </body>
